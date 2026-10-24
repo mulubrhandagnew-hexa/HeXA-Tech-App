@@ -44,7 +44,7 @@ describe("REST API", () => {
   it("reports health", async () => {
     const res = await request(ctx.server).get("/health");
     expect(res.status).toBe(200);
-    expect(res.body.service).toBe("hexa-ev-hub");
+    expect(res.body.service).toBe("hexa-ev-recharge");
   });
 
   it("charges a vehicle with decimal price input and persists the result", async () => {

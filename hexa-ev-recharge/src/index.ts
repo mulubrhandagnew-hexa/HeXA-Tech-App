@@ -1,5 +1,5 @@
 /**
- * HeXA EV Hub server bootstrap.
+ * HeXA EV ReCharge server bootstrap.
  *
  * Env:
  *   PORT        — HTTP port (default 3100)
@@ -18,12 +18,12 @@ async function main(): Promise<void> {
   const app = createServer({ hub, repository });
   app.listen(port, () => {
     // eslint-disable-next-line no-console
-    console.log(`HeXA EV Hub listening on http://localhost:${port} (db: ${dbPath})`);
+    console.log(`HeXA EV ReCharge listening on http://localhost:${port} (db: ${dbPath})`);
   });
 }
 
 main().catch((err) => {
   // eslint-disable-next-line no-console
-  console.error("Failed to start HeXA EV Hub:", err);
+  console.error("Failed to start HeXA EV ReCharge:", err);
   process.exit(1);
 });

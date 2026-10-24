@@ -1,7 +1,7 @@
 {
-  "name": "hexa-ev-hub",
+  "name": "hexa-ev-recharge",
   "version": "0.1.0",
-  "description": "HeXA EV Hub — standalone EV recharge and EV car care service.",
+  "description": "HeXA EV ReCharge (a HeXA Tech LLC brand) — EV recharge and EV car care service.",
   "type": "module",
   "engines": {
     "node": ">=20"

@@ -1,6 +1,9 @@
-# HeXA EV Hub
+# HeXA EV ReCharge
 
-Standalone **EV recharge** and **EV car care** service for HeXA.
+**HeXA EV ReCharge** — EV recharge and EV car care service, a HeXA Tech LLC brand
+(alongside HeXA Ride, HeXA Elite and the other HeXA Tech companies). The
+production app is hosted on Hercules; this repo holds a standalone reference
+implementation of its backend rules.
 
 One hub runs a charging network (stations, connectors, reservations and
 metered charging sessions) next to a car care shop (EV service catalog,
@@ -14,7 +17,7 @@ does not depend on HeXA Books or any other HeXA service.
 ## Quick start
 
 ```bash
-cd hexa-ev-hub
+cd hexa-ev-recharge
 npm install
 npm test          # run the suite
 npm run dev       # start the API with live reload (port 3100)

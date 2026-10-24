@@ -1,5 +1,5 @@
 /**
- * HeXA EV Hub REST API.
+ * HeXA EV ReCharge REST API.
  *
  * A thin HTTP layer over the Hub service. Monetary fields in requests accept a
  * decimal string or number in major units (e.g. "0.45" per kWh) and are
@@ -136,7 +136,7 @@ export function createServer(opts: ServerOptions): Express {
     });
 
   app.get("/health", (_req, res) => {
-    res.json({ status: "ok", service: "hexa-ev-hub" });
+    res.json({ status: "ok", service: "hexa-ev-recharge" });
   });
 
   // --- customers & vehicles

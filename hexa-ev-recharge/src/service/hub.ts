@@ -1,5 +1,5 @@
 /**
- * Hub — the application service for the HeXA EV Hub. It owns customers and
+ * Hub — the application service for the HeXA EV ReCharge. It owns customers and
  * vehicles, the charging network (stations, reservations, sessions) and the
  * car care shop (catalog, bays, appointments), and enforces the rules that
  * keep them consistent. This is the main entry point used by the API.
