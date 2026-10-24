@@ -1,18 +1,17 @@
-# HeXA EV ReCharge
+# HeXA EV ReCharge — Mobile EV Recharge backend
 
-**HeXA EV ReCharge** — EV recharge and EV car care service, a HeXA Tech LLC brand
-(alongside HeXA Ride, HeXA Elite and the other HeXA Tech companies). The
-production app is hosted on Hercules; this repo holds a standalone reference
-implementation of its backend rules.
+**Mobile EV Recharge** is a HeXA Tech LLC brand, alongside HeXA Ride, HeXA
+Elite and the other HeXA Tech companies. The service comes to the vehicle:
+independent providers bring mobile charging, cleaning, roadside help and other
+vehicle services to EVs parked wherever their owners are working, shopping,
+dining or staying.
 
-One hub runs a charging network (stations, connectors, reservations and
-metered charging sessions) next to a car care shop (EV service catalog,
-service bays and appointments). Both bill the same customers, and both feed
-one revenue report.
+The customer-facing app is built and hosted on **Hercules**. This folder is a
+standalone, tested reference implementation of the backend rules behind it:
+dispatch, pricing, payouts and reporting. Its rules can be ported into the
+Hercules app, or it can run as its own API.
 
-It is a self-contained TypeScript service with **no native dependencies**. It
-stores its data as a single JSON snapshot and runs anywhere Node 20+ runs. It
-does not depend on HeXA Books or any other HeXA service.
+> Charge · Clean · Repair · Recover · Keep moving
 
 ## Quick start
 
@@ -30,63 +29,114 @@ npm run build && npm start
 | `PORT` | `3100` | HTTP port |
 | `HUB_DB_PATH` | `./data/hub.json` | JSON snapshot location |
 
-## Rules the hub enforces
+## How a job flows
 
-**Charging**
-- Money is integer cents and energy is integer watt-hours (Wh). Energy cost is
-  `Wh × cents/kWh ÷ 1000`, rounded half-up to the cent.
-- A session copies the connector's price when it starts, so a later price
-  change doesn't change bills already in progress.
-- **Idle fee:** once charging finishes, the driver gets a 10-minute grace
-  period. After that, every whole minute the car stays plugged in is billed at
-  the connector's idle rate.
-- A vehicle can only use connectors it supports (CCS1/CCS2/CHAdeMO/NACS/Type2/J1772).
-- Each connector runs one session at a time, and each vehicle has at most one
-  active session.
-- Reservations last 15 minutes to 4 hours and can't overlap on a connector.
-  During a reservation, and for 15 minutes before it starts (the early-arrival
-  window), only the reserving vehicle can plug in. Plugging in marks the
-  reservation fulfilled.
-- A connector can't be taken out of service while a car is charging on it.
+```
+REQUEST ─▶ MATCH ─▶ TRACK ─────────────▶ SERVICE ─────────────▶ COMPLETE
+requested  matched  en_route ▶ arrived   in_service ▶ awaiting   completed
+                                                     confirmation (confirm, pay, rate)
+```
 
-**Car care**
-- The default catalog has 11 EV-focused services: high-voltage battery health
-  check, 12V battery, tire rotation and alignment, brakes, brake fluid, battery
-  thermal/coolant check, software diagnostics, cabin filter and detailing.
-- An appointment runs its services back-to-back. Its length is the sum of the
-  service durations, and prices are copied at booking time.
-- If no bay is given, the first free bay is chosen. Bays can't be double-booked.
-- Appointment lifecycle: `booked → in_progress → completed`, or `booked → cancelled`.
+1. **Request:** the customer chooses a vehicle, a service and a location (GPS
+   point plus an optional address such as "Hotel lot, level 2").
+2. **Match:** the nearest eligible provider gets the job. Eligible means
+   verified, online, offering the service, within their own service radius,
+   not already on a job, and not having declined this job. For mobile
+   charging, the provider's equipment must also fit the vehicle's charging
+   inlet. A provider who declines sends the job back for re-matching.
+3. **Track:** the provider sets off. Each location update recalculates the ETA
+   (straight-line distance at 25 mph, plus 5 minutes to park and set up).
+4. **Service:** the provider arrives, starts the work, and finishes it,
+   reporting any metered amount (kWh charged, miles towed).
+5. **Complete:** the customer confirms, which charges the bill, and can rate
+   the provider 1–5 stars.
+
+**Cancellation** is free until the provider sets off. After that, the call-out
+fee is charged. Once work has started, the job can't be cancelled.
+
+## Services and pricing
+
+Every job has a **call-out fee**, and metered services also charge **per
+unit**. The price is fixed when the request is made, so later catalog changes
+don't affect open jobs. Money is integer cents, and metered amounts are
+integer thousandths of a unit (Wh for kWh, thousandths of a mile for towing),
+so no floating-point value ever reaches a price.
+
+| Code | Service | Default price |
+|---|---|---|
+| `MOBILE_CHARGING` | Mobile EV charging | $25.00 + $0.55/kWh |
+| `DETAILING` | Mobile cleaning & detailing | $79.00 |
+| `BATTERY_12V` | 12V battery service | $69.00 |
+| `ROADSIDE` | Roadside assistance | $89.00 |
+| `INSPECTION` | Vehicle inspection | $99.00 |
+| `ADAS_SENSOR` | ADAS & sensor service (camera, radar, sensor cleaning) | $59.00 |
+| `TOWING` | Towing & recovery | $125.00 + $4.50/mile |
+| `TIRE` | Tire service | $75.00 |
+
+These prices are placeholders; adjust them with `PATCH /services/:code`. The
+platform keeps a **commission** (default 20%, set with `commissionBps`). The
+rest is the provider's payout. Commission rounds half-up, so platform fee plus
+provider payout always equals the total exactly.
+
+## Audiences
+
+- **Individual EV owners** request a service in the app.
+- **Providers** ("Become a provider") apply listing their services and service
+  radius, and charging providers also list their connector types. The platform
+  verifies them before they can go online, and each provider can see their
+  earnings and average rating.
+- **Fleets** have company accounts and can book many vehicles in one call. A
+  batch either fully succeeds or makes no changes.
+- **Autonomous vehicles** (future integration, **not yet active**): vehicles
+  flagged `autonomous` will be able to request service themselves via
+  `POST /autonomous/requests`. That endpoint returns `503` until
+  `autonomousApiEnabled` is turned on in settings, matching the "Future
+  Autonomous/API capability — not yet active" notice on the site.
 
 ## API
 
-Money inputs are decimal strings or numbers in major units (`"0.45"`).
-Responses always use integer cents. Timestamps must be ISO-8601 with an offset
-(`2026-05-01T10:00:00Z`). Errors return `400` (invalid), `404` (not found) or
-`409` (conflict).
+Money inputs are decimal strings or numbers in major units (`"0.55"`).
+Responses always use integer cents. Errors return `400` invalid, `403` wrong
+provider, `404` not found, `409` conflict or `503` not yet active.
 
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/health` | Liveness |
-| GET/POST | `/customers` | List / create customers |
-| GET | `/customers/:id` | Customer and their vehicles |
-| POST | `/customers/:id/vehicles` | Register a vehicle (`connectorTypes`, `batteryKwh`, …) |
-| GET | `/customers/:id/statement` | Completed charging and care, with totals |
-| GET/POST | `/stations` | Find (`?connectorType=CCS2&minPowerKw=50`) / add stations |
-| GET | `/stations/:id` | Station detail |
-| GET | `/stations/:id/availability` | Per-connector `available / reserved / charging / out_of_service` (`?at=`) |
-| POST | `/stations/:id/connectors/:cid/out-of-service` · `/in-service` | Maintenance toggle |
-| GET/POST | `/reservations` | List / book a connector slot |
-| POST | `/reservations/:id/cancel` | Cancel a booking |
-| GET/POST | `/sessions` | List / start a charging session (`startMeterWh`) |
-| POST | `/sessions/:id/charging-complete` | Charger reports battery full |
-| POST | `/sessions/:id/stop` | Unplug: `endMeterWh` → bill |
-| GET/POST | `/care/catalog` | List / add care services |
-| POST | `/care/catalog/seed-default` | Load the default EV service catalog |
-| GET/POST | `/care/bays` | List / add service bays |
-| GET/POST | `/care/appointments` | List / book an appointment |
-| POST | `/care/appointments/:id/start` · `/complete` · `/cancel` | Lifecycle |
-| GET | `/reports/revenue?from=&to=` | Charging and care revenue for a period |
+| GET/PATCH | `/settings` | Commission, autonomous API switch |
+| GET | `/services` | Service catalog |
+| POST | `/services/seed-default` | Load the default catalog |
+| PATCH | `/services/:code` | Change price or description |
+| GET/POST | `/customers` | List / create (`kind: individual \| fleet`) |
+| GET | `/customers/:id` | Customer and vehicles |
+| POST | `/customers/:id/vehicles` | Add a vehicle (`connectorTypes`, `autonomous`) |
+| GET | `/customers/:id/statement` | What the customer has been charged |
+| POST | `/fleet/:id/requests` | Batch requests for fleet vehicles |
+| GET | `/providers` | List (`?status=&service=`) |
+| POST | `/providers/apply` | Become a provider |
+| POST | `/providers/:id/verify` · `/suspend` | Platform verification |
+| POST | `/providers/:id/online` · `/offline` | Availability (online takes a `location`) |
+| POST | `/providers/:id/location` | Live location ping (updates ETA) |
+| GET | `/providers/:id/earnings` | Payouts and average rating |
+| GET/POST | `/requests` | List (`?customerId=&providerId=&status=&serviceCode=`) / request service |
+| GET | `/requests/:id` | Request detail, including status and ETA |
+| GET | `/requests/:id/candidates` | Eligible providers, nearest first |
+| POST | `/requests/:id/match` | Match to the nearest provider or a named `providerId` |
+| POST | `/requests/:id/decline` · `/depart` · `/arrive` · `/start` | Provider steps (`providerId`) |
+| POST | `/requests/:id/finish` | Provider finishes (`providerId`, `quantity`) |
+| POST | `/requests/:id/confirm` | Customer confirms and pays, with an optional `rating` |
+| POST | `/requests/:id/cancel` | Customer cancels |
+| POST | `/autonomous/requests` | Vehicle-initiated request (503 until enabled) |
+| GET | `/reports/revenue?from=&to=` | Gross revenue, platform fees, payouts, by service |
+
+## Not included yet
+
+- **Login and roles.** Provider actions take `providerId` in the request body.
+  In production, that must come from the logged-in provider instead.
+- **Card payments and provider payouts.** "Confirm" records the charge, but no
+  payment processor (such as Stripe) is connected yet.
+- **Live tracking.** Location updates are polled. Pushing them live (for
+  example over websockets) and road-based ETAs (from a maps API) would come
+  with the real app.
 
 ## Architecture
 
@@ -94,11 +144,12 @@ Responses always use integer cents. Timestamps must be ISO-8601 with an offset
 src/
   domain/        pure rules, no I/O
     money.ts       integer-cents money type
-    time.ts        ISO timestamp parsing, interval overlap
-    charging.ts    stations, connectors, reservations, sessions, pricing
-    carcare.ts     care catalog, bays, appointments
-    customers.ts   customers and vehicles
-  service/hub.ts application service enforcing the rules above
+    catalog.ts     service catalog, metered pricing, commission split
+    parties.ts     customers, vehicles, providers
+    requests.ts    service request model and lifecycle states
+    geo.ts         distance and ETA
+    time.ts        ISO timestamp parsing
+  service/hub.ts application service: matching, dispatch, billing, reports
   persistence/   in-memory and atomic JSON-file repositories
   api/server.ts  Express + zod REST layer
   index.ts       server bootstrap

@@ -1,17 +1,20 @@
 /**
- * HeXA EV ReCharge REST API.
+ * Mobile EV Recharge REST API.
  *
- * A thin HTTP layer over the Hub service. Monetary fields in requests accept a
- * decimal string or number in major units (e.g. "0.45" per kWh) and are
- * converted to integer cents. All amounts in responses are integer cents;
- * energy is in watt-hours.
+ * A thin HTTP layer over the Hub service. Monetary fields in requests accept
+ * a decimal string or number in major units (e.g. "25.00") and are converted
+ * to integer cents. All amounts in responses are integer cents.
+ *
+ * Provider actions carry the acting `providerId` in the body. In production
+ * that id must come from the authenticated provider session instead.
  */
 import express, { type Express, type Request, type Response, type NextFunction } from "express";
 import { z, ZodError } from "zod";
 import { Hub } from "../service/hub.js";
 import { toCents, MoneyError } from "../domain/money.js";
 import { HubError } from "../domain/errors.js";
-import { CONNECTOR_TYPES } from "../domain/charging.js";
+import { SERVICE_CODES } from "../domain/catalog.js";
+import { CONNECTOR_TYPES } from "../domain/parties.js";
 import { type HubRepository, InMemoryRepository } from "../persistence/repository.js";
 
 const money = z.union([z.string(), z.number()]).transform((v, ctx) => {
@@ -23,13 +26,25 @@ const money = z.union([z.string(), z.number()]).transform((v, ctx) => {
   }
 });
 
-const nonNegativeMoney = money.refine((c) => c >= 0, { message: "amount must not be negative" });
+const price = money.refine((c) => c >= 0, { message: "amount must not be negative" });
+const serviceCode = z.enum(SERVICE_CODES);
 const connectorType = z.enum(CONNECTOR_TYPES);
-const timestamp = z.string().min(1);
-const wattHours = z.number().int().nonnegative();
+const point = z.object({ latitude: z.number().min(-90).max(90), longitude: z.number().min(-180).max(180) });
+const requestStatus = z.enum([
+  "requested",
+  "matched",
+  "en_route",
+  "arrived",
+  "in_service",
+  "awaiting_confirmation",
+  "completed",
+  "cancelled",
+]);
 
 const customerSchema = z.object({
+  kind: z.enum(["individual", "fleet"]).default("individual"),
   name: z.string().min(1),
+  company: z.string().min(1).optional(),
   email: z.string().email().optional(),
   phone: z.string().min(1).optional(),
 });
@@ -39,68 +54,46 @@ const vehicleSchema = z.object({
   model: z.string().min(1),
   year: z.number().int().min(1990).max(2100).optional(),
   plate: z.string().min(1).optional(),
-  batteryKwh: z.number().positive().optional(),
   connectorTypes: z.array(connectorType).default([]),
+  autonomous: z.boolean().optional(),
 });
 
-const stationSchema = z.object({
+const providerSchema = z.object({
   name: z.string().min(1),
-  address: z.string().min(1),
-  latitude: z.number().min(-90).max(90),
-  longitude: z.number().min(-180).max(180),
-  connectors: z
-    .array(
-      z.object({
-        type: connectorType,
-        maxPowerKw: z.number().positive(),
-        pricePerKwh: nonNegativeMoney,
-        idleFeePerMinute: nonNegativeMoney.default(0),
-      }),
-    )
-    .min(1),
+  email: z.string().email().optional(),
+  phone: z.string().min(1).optional(),
+  services: z.array(serviceCode).min(1),
+  connectorTypes: z.array(connectorType).optional(),
+  serviceRadiusMiles: z.number().positive().max(200),
 });
 
-const reservationSchema = z.object({
-  stationId: z.string().min(1),
-  connectorId: z.string().min(1),
+const requestSchema = z.object({
   vehicleId: z.string().min(1),
-  start: timestamp,
-  end: timestamp,
-});
-
-const startSessionSchema = z.object({
-  stationId: z.string().min(1),
-  connectorId: z.string().min(1),
-  vehicleId: z.string().min(1),
-  startMeterWh: wattHours,
-  reservationId: z.string().min(1).optional(),
-  at: timestamp.optional(),
-});
-
-const stopSessionSchema = z.object({
-  endMeterWh: wattHours,
-  at: timestamp.optional(),
-  chargingCompletedAt: timestamp.optional(),
-});
-
-const careServiceSchema = z.object({
-  code: z.string().min(1).regex(/^[A-Z0-9-]+$/, "use upper-case letters, digits and dashes"),
-  name: z.string().min(1),
-  category: z.enum(["battery", "tires", "brakes", "thermal", "software", "filters", "detailing"]),
-  durationMinutes: z.number().int().positive(),
-  price: nonNegativeMoney,
-});
-
-const appointmentSchema = z.object({
-  vehicleId: z.string().min(1),
-  serviceCodes: z.array(z.string().min(1)).min(1),
-  start: timestamp,
-  bayId: z.string().min(1).optional(),
+  serviceCode,
+  location: point.extend({ address: z.string().min(1).optional() }),
   notes: z.string().max(1000).optional(),
 });
 
+const offeringPatchSchema = z
+  .object({
+    name: z.string().min(1),
+    description: z.string(),
+    calloutFee: price,
+    unitPrice: price,
+    estimatedMinutes: z.number().int().positive(),
+  })
+  .partial();
+
+const settingsPatchSchema = z
+  .object({ commissionBps: z.number().int().min(0).max(10000), autonomousApiEnabled: z.boolean() })
+  .partial();
+
+const providerAction = z.object({ providerId: z.string().min(1) });
+
 const query = (req: Request, key: string): string | undefined =>
   typeof req.query[key] === "string" ? (req.query[key] as string) : undefined;
+
+const STATUS_BY_CODE = { invalid: 400, forbidden: 403, not_found: 404, conflict: 409, unavailable: 503 } as const;
 
 export interface ServerOptions {
   hub: Hub;
@@ -127,159 +120,166 @@ export function createServer(opts: ServerOptions): Express {
       Promise.resolve(fn(req, res)).catch(next);
     };
 
-  /** POST handler that runs a mutation, persists, and replies 201 (or `status`). */
-  const mutate = (key: string, fn: (req: Request) => unknown, status = 201) =>
+  /** Handler that runs a mutation, persists, and replies with `{ [key]: result }`. */
+  const mutate = (key: string, fn: (req: Request) => unknown, status = 200) =>
     wrap(async (req, res) => {
       const result = fn(req);
       await persist();
       res.status(status).json({ [key]: result });
     });
 
+  const id = (req: Request, key = "id") => req.params[key]!;
+
   app.get("/health", (_req, res) => {
     res.json({ status: "ok", service: "hexa-ev-recharge" });
   });
 
-  // --- customers & vehicles
+  app.get("/settings", (_req, res) => {
+    res.json({ settings: hub.settings() });
+  });
+  app.patch("/settings", mutate("settings", (req) => hub.updateSettings(settingsPatchSchema.parse(req.body))));
+
+  // --- service catalog
+  app.get("/services", (_req, res) => {
+    res.json({ services: hub.listCatalog() });
+  });
+  app.post("/services/seed-default", mutate("services", () => hub.seedDefaultCatalog(), 201));
+  app.patch(
+    "/services/:code",
+    mutate("service", (req) => hub.updateOffering(serviceCode.parse(id(req, "code")), offeringPatchSchema.parse(req.body))),
+  );
+
+  // --- customers, vehicles and fleets
   app.get("/customers", (_req, res) => {
     res.json({ customers: hub.listCustomers() });
   });
-  app.post("/customers", mutate("customer", (req) => hub.addCustomer(customerSchema.parse(req.body))));
+  app.post("/customers", mutate("customer", (req) => hub.addCustomer(customerSchema.parse(req.body)), 201));
   app.get(
     "/customers/:id",
     wrap((req, res) => {
-      res.json({ customer: hub.getCustomer(req.params.id!), vehicles: hub.listVehicles(req.params.id) });
+      res.json({ customer: hub.getCustomer(id(req)), vehicles: hub.listVehicles(id(req)) });
     }),
   );
   app.post(
     "/customers/:id/vehicles",
-    mutate("vehicle", (req) => hub.addVehicle({ ...vehicleSchema.parse(req.body), customerId: req.params.id! })),
+    mutate("vehicle", (req) => hub.addVehicle(id(req), vehicleSchema.parse(req.body)), 201),
   );
   app.get(
     "/customers/:id/statement",
     wrap((req, res) => {
-      res.json(hub.customerStatement(req.params.id!));
-    }),
-  );
-
-  // --- charging network
-  app.get(
-    "/stations",
-    wrap((req, res) => {
-      const type = query(req, "connectorType");
-      const minPower = query(req, "minPowerKw");
-      res.json({
-        stations: hub.listStations({
-          ...(type ? { connectorType: connectorType.parse(type) } : {}),
-          ...(minPower ? { minPowerKw: z.coerce.number().positive().parse(minPower) } : {}),
-        }),
-      });
-    }),
-  );
-  app.post("/stations", mutate("station", (req) => hub.addStation(stationSchema.parse(req.body))));
-  app.get(
-    "/stations/:id",
-    wrap((req, res) => {
-      res.json({ station: hub.getStation(req.params.id!) });
-    }),
-  );
-  app.get(
-    "/stations/:id/availability",
-    wrap((req, res) => {
-      res.json({ connectors: hub.availability(req.params.id!, query(req, "at")) });
+      res.json(hub.customerStatement(id(req)));
     }),
   );
   app.post(
-    "/stations/:id/connectors/:connectorId/out-of-service",
-    mutate("connector", (req) => hub.setConnectorOutOfService(req.params.id!, req.params.connectorId!, true), 200),
-  );
-  app.post(
-    "/stations/:id/connectors/:connectorId/in-service",
-    mutate("connector", (req) => hub.setConnectorOutOfService(req.params.id!, req.params.connectorId!, false), 200),
-  );
-
-  app.get("/reservations", (req, res) => {
-    const customerId = query(req, "customerId");
-    const stationId = query(req, "stationId");
-    res.json({
-      reservations: hub.listReservations({ ...(customerId ? { customerId } : {}), ...(stationId ? { stationId } : {}) }),
-    });
-  });
-  app.post("/reservations", mutate("reservation", (req) => hub.reserve(reservationSchema.parse(req.body))));
-  app.post("/reservations/:id/cancel", mutate("reservation", (req) => hub.cancelReservation(req.params.id!), 200));
-
-  app.get(
-    "/sessions",
-    wrap((req, res) => {
-      const customerId = query(req, "customerId");
-      const stationId = query(req, "stationId");
-      const status = query(req, "status");
-      res.json({
-        sessions: hub.listSessions({
-          ...(customerId ? { customerId } : {}),
-          ...(stationId ? { stationId } : {}),
-          ...(status ? { status: z.enum(["active", "completed"]).parse(status) } : {}),
-        }),
-      });
-    }),
-  );
-  app.post("/sessions", mutate("session", (req) => hub.startSession(startSessionSchema.parse(req.body))));
-  app.get(
-    "/sessions/:id",
-    wrap((req, res) => {
-      res.json({ session: hub.getSession(req.params.id!) });
-    }),
-  );
-  app.post(
-    "/sessions/:id/charging-complete",
+    "/fleet/:id/requests",
     mutate(
-      "session",
-      (req) => hub.markChargingComplete(req.params.id!, z.object({ at: timestamp.optional() }).parse(req.body ?? {}).at),
-      200,
+      "requests",
+      (req) => hub.requestFleetService(id(req), z.object({ requests: z.array(requestSchema).min(1) }).parse(req.body).requests),
+      201,
     ),
   );
-  app.post(
-    "/sessions/:id/stop",
-    mutate("session", (req) => hub.stopSession(req.params.id!, stopSessionSchema.parse(req.body)), 200),
-  );
 
-  // --- car care
-  app.get("/care/catalog", (_req, res) => {
-    res.json({ services: hub.listCatalog() });
-  });
-  app.post("/care/catalog", mutate("service", (req) => hub.addCareService(careServiceSchema.parse(req.body))));
-  app.post("/care/catalog/seed-default", mutate("services", () => hub.seedDefaultCatalog()));
-  app.get("/care/bays", (_req, res) => {
-    res.json({ bays: hub.listBays() });
-  });
-  app.post(
-    "/care/bays",
-    mutate("bay", (req) => hub.addBay(z.object({ name: z.string().min(1) }).parse(req.body).name)),
-  );
+  // --- providers
   app.get(
-    "/care/appointments",
+    "/providers",
     wrap((req, res) => {
-      const customerId = query(req, "customerId");
-      const bayId = query(req, "bayId");
       const status = query(req, "status");
+      const service = query(req, "service");
       res.json({
-        appointments: hub.listAppointments({
-          ...(customerId ? { customerId } : {}),
-          ...(bayId ? { bayId } : {}),
-          ...(status ? { status: z.enum(["booked", "in_progress", "completed", "cancelled"]).parse(status) } : {}),
+        providers: hub.listProviders({
+          ...(status ? { status: z.enum(["pending", "active", "suspended"]).parse(status) } : {}),
+          ...(service ? { service: serviceCode.parse(service) } : {}),
         }),
       });
     }),
   );
-  app.post(
-    "/care/appointments",
-    mutate("appointment", (req) => hub.bookAppointment(appointmentSchema.parse(req.body))),
+  app.post("/providers/apply", mutate("provider", (req) => hub.applyAsProvider(providerSchema.parse(req.body)), 201));
+  app.get(
+    "/providers/:id",
+    wrap((req, res) => {
+      res.json({ provider: hub.getProvider(id(req)) });
+    }),
   );
-  app.post("/care/appointments/:id/start", mutate("appointment", (req) => hub.startAppointment(req.params.id!), 200));
+  app.post("/providers/:id/verify", mutate("provider", (req) => hub.verifyProvider(id(req))));
+  app.post("/providers/:id/suspend", mutate("provider", (req) => hub.suspendProvider(id(req))));
   app.post(
-    "/care/appointments/:id/complete",
-    mutate("appointment", (req) => hub.completeAppointment(req.params.id!), 200),
+    "/providers/:id/online",
+    mutate("provider", (req) => {
+      const { location } = z.object({ location: point.optional() }).parse(req.body ?? {});
+      return hub.setProviderOnline(id(req), true, location);
+    }),
   );
-  app.post("/care/appointments/:id/cancel", mutate("appointment", (req) => hub.cancelAppointment(req.params.id!), 200));
+  app.post("/providers/:id/offline", mutate("provider", (req) => hub.setProviderOnline(id(req), false)));
+  app.post("/providers/:id/location", mutate("provider", (req) => hub.updateProviderLocation(id(req), point.parse(req.body))));
+  app.get(
+    "/providers/:id/earnings",
+    wrap((req, res) => {
+      res.json(hub.providerEarnings(id(req)));
+    }),
+  );
+
+  // --- service requests: Request → Match → Track → Service → Complete
+  app.get(
+    "/requests",
+    wrap((req, res) => {
+      const customerId = query(req, "customerId");
+      const providerId = query(req, "providerId");
+      const status = query(req, "status");
+      const service = query(req, "serviceCode");
+      res.json({
+        requests: hub.listRequests({
+          ...(customerId ? { customerId } : {}),
+          ...(providerId ? { providerId } : {}),
+          ...(status ? { status: requestStatus.parse(status) } : {}),
+          ...(service ? { serviceCode: serviceCode.parse(service) } : {}),
+        }),
+      });
+    }),
+  );
+  app.post("/requests", mutate("request", (req) => hub.requestService(requestSchema.parse(req.body)), 201));
+  app.get(
+    "/requests/:id",
+    wrap((req, res) => {
+      res.json({ request: hub.getRequest(id(req)) });
+    }),
+  );
+  app.get(
+    "/requests/:id/candidates",
+    wrap((req, res) => {
+      res.json({ candidates: hub.candidates(id(req)) });
+    }),
+  );
+  app.post(
+    "/requests/:id/match",
+    mutate("request", (req) => hub.match(id(req), z.object({ providerId: z.string().min(1).optional() }).parse(req.body ?? {}).providerId)),
+  );
+  app.post("/requests/:id/decline", mutate("request", (req) => hub.decline(id(req), providerAction.parse(req.body).providerId)));
+  app.post("/requests/:id/depart", mutate("request", (req) => hub.depart(id(req), providerAction.parse(req.body).providerId)));
+  app.post("/requests/:id/arrive", mutate("request", (req) => hub.arrive(id(req), providerAction.parse(req.body).providerId)));
+  app.post("/requests/:id/start", mutate("request", (req) => hub.startService(id(req), providerAction.parse(req.body).providerId)));
+  app.post(
+    "/requests/:id/finish",
+    mutate("request", (req) => {
+      const body = providerAction.extend({ quantity: z.number().int().nonnegative().default(0) }).parse(req.body);
+      return hub.finishService(id(req), body.providerId, body.quantity);
+    }),
+  );
+  app.post(
+    "/requests/:id/confirm",
+    mutate("request", (req) => {
+      const { rating } = z
+        .object({ rating: z.object({ stars: z.number().int().min(1).max(5), comment: z.string().max(1000).optional() }).optional() })
+        .parse(req.body ?? {});
+      return hub.confirm(id(req), rating);
+    }),
+  );
+  app.post("/requests/:id/cancel", mutate("request", (req) => hub.cancel(id(req))));
+
+  // --- autonomous vehicles (future integration; returns 503 until enabled in settings)
+  app.post(
+    "/autonomous/requests",
+    mutate("request", (req) => hub.requestService(requestSchema.parse(req.body), "autonomous_api"), 201),
+  );
 
   // --- reporting
   app.get(
@@ -292,14 +292,13 @@ export function createServer(opts: ServerOptions): Express {
     }),
   );
 
-  // Error handler: map domain errors to 400 / 404 / 409, everything else to 500.
+  // Error handler: map domain errors to their status, everything else to 500.
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     if (err instanceof ZodError) {
       return res.status(400).json({ error: "validation_error", issues: err.issues });
     }
     if (err instanceof HubError) {
-      const status = err.code === "not_found" ? 404 : err.code === "conflict" ? 409 : 400;
-      return res.status(status).json({ error: err.code, message: err.message });
+      return res.status(STATUS_BY_CODE[err.code]).json({ error: err.code, message: err.message });
     }
     if (err instanceof MoneyError) {
       return res.status(400).json({ error: "invalid", message: err.message });

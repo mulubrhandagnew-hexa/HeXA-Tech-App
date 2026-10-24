@@ -6,33 +6,34 @@ import { sequentialGenerator } from "../domain/ids.js";
 import { toMs } from "../domain/time.js";
 import { InMemoryRepository } from "../persistence/repository.js";
 
+const SPOT = { latitude: 34.0522, longitude: -118.2437 };
+
 function app() {
   const repository = new InMemoryRepository();
   const hub = new Hub(undefined, sequentialGenerator("a"), () => toMs("2026-05-01T08:00:00Z"));
   return { server: createServer({ hub, repository }), repository };
 }
 
-async function seed(server: ReturnType<typeof app>["server"]) {
+type Server = ReturnType<typeof app>["server"];
+
+async function seed(server: Server) {
+  await request(server).post("/services/seed-default").expect(201);
   const customer = (await request(server).post("/customers").send({ name: "Abebe" }).expect(201)).body.customer;
   const vehicle = (
     await request(server)
       .post(`/customers/${customer.id}/vehicles`)
-      .send({ make: "VW", model: "ID.4", connectorTypes: ["CCS2"] })
+      .send({ make: "VW", model: "ID.4", connectorTypes: ["CCS1"] })
       .expect(201)
   ).body.vehicle;
-  const station = (
+  const provider = (
     await request(server)
-      .post("/stations")
-      .send({
-        name: "HeXA Hub",
-        address: "Main St",
-        latitude: 9,
-        longitude: 38.7,
-        connectors: [{ type: "CCS2", maxPowerKw: 120, pricePerKwh: "0.45", idleFeePerMinute: "0.40" }],
-      })
+      .post("/providers/apply")
+      .send({ name: "Volt Van", services: ["MOBILE_CHARGING"], connectorTypes: ["CCS1"], serviceRadiusMiles: 15 })
       .expect(201)
-  ).body.station;
-  return { customer, vehicle, station, connector: station.connectors[0] };
+  ).body.provider;
+  await request(server).post(`/providers/${provider.id}/verify`).expect(200);
+  await request(server).post(`/providers/${provider.id}/online`).send({ location: { latitude: 34.06, longitude: -118.25 } }).expect(200);
+  return { customer, vehicle, provider };
 }
 
 describe("REST API", () => {
@@ -47,73 +48,68 @@ describe("REST API", () => {
     expect(res.body.service).toBe("hexa-ev-recharge");
   });
 
-  it("charges a vehicle with decimal price input and persists the result", async () => {
+  it("runs a mobile charging job end to end and persists it", async () => {
     const { server, repository } = ctx;
-    const { customer, vehicle, station, connector } = await seed(server);
-    expect(connector.pricePerKwh).toBe(45);
-
-    const session = (
+    const { customer, vehicle, provider } = await seed(server);
+    const r = (
       await request(server)
-        .post("/sessions")
-        .send({ stationId: station.id, connectorId: connector.id, vehicleId: vehicle.id, startMeterWh: 0 })
+        .post("/requests")
+        .send({ vehicleId: vehicle.id, serviceCode: "MOBILE_CHARGING", location: { ...SPOT, address: "Hotel lot" } })
         .expect(201)
-    ).body.session;
+    ).body.request;
 
-    const stopped = await request(server)
-      .post(`/sessions/${session.id}/stop`)
-      .send({ endMeterWh: 40_000, at: "2026-05-01T09:00:00Z" })
-      .expect(200);
-    expect(stopped.body.session.bill.total).toBe(1800);
+    const candidates = (await request(server).get(`/requests/${r.id}/candidates`).expect(200)).body.candidates;
+    expect(candidates[0].provider.id).toBe(provider.id);
 
-    const statement = await request(server).get(`/customers/${customer.id}/statement`).expect(200);
-    expect(statement.body.total).toBe(1800);
-    expect((await repository.load()).sessions[0]!.status).toBe("completed");
+    await request(server).post(`/requests/${r.id}/match`).send({}).expect(200);
+    for (const step of ["depart", "arrive", "start"]) {
+      await request(server).post(`/requests/${r.id}/${step}`).send({ providerId: provider.id }).expect(200);
+    }
+    const finished = await request(server).post(`/requests/${r.id}/finish`).send({ providerId: provider.id, quantity: 20_000 }).expect(200);
+    expect(finished.body.request.bill.total).toBe(2500 + 1100);
+    await request(server).post(`/requests/${r.id}/confirm`).send({ rating: { stars: 4 } }).expect(200);
+
+    expect((await request(server).get(`/customers/${customer.id}/statement`)).body.total).toBe(3600);
+    expect((await request(server).get(`/providers/${provider.id}/earnings`)).body.total).toBe(2880);
+    expect((await repository.load()).requests[0]!.status).toBe("completed");
   });
 
-  it("maps domain errors to 400 / 404 / 409", async () => {
+  it("maps domain errors to 400 / 403 / 404 / 409 / 503", async () => {
     const { server } = ctx;
-    const { vehicle, station, connector } = await seed(server);
-    const body = { stationId: station.id, connectorId: connector.id, vehicleId: vehicle.id, startMeterWh: 0 };
+    const { vehicle, provider } = await seed(server);
+    const body = { vehicleId: vehicle.id, serviceCode: "MOBILE_CHARGING", location: SPOT };
+    const r = (await request(server).post("/requests").send(body).expect(201)).body.request;
 
-    await request(server).post("/sessions").send(body).expect(201);
-    expect((await request(server).post("/sessions").send(body)).status).toBe(409);
-    expect((await request(server).get("/stations/missing")).status).toBe(404);
-    expect((await request(server).post("/sessions").send({ ...body, startMeterWh: -1 })).status).toBe(400);
-    const badTime = await request(server)
-      .post("/reservations")
-      .send({ ...body, start: "2026-05-01 10:00", end: "2026-05-01T11:00:00Z" });
-    expect(badTime.status).toBe(400);
+    expect((await request(server).post("/requests").send(body)).status).toBe(409);
+    expect((await request(server).get("/requests/missing")).status).toBe(404);
+    expect((await request(server).post("/requests").send({ ...body, serviceCode: "WARP_DRIVE" })).status).toBe(400);
+    await request(server).post(`/requests/${r.id}/match`).send({ providerId: provider.id }).expect(200);
+    expect((await request(server).post(`/requests/${r.id}/depart`).send({ providerId: "someone-else" })).status).toBe(403);
+    expect((await request(server).post("/autonomous/requests").send(body)).status).toBe(503);
   });
 
-  it("books and completes a car care appointment", async () => {
+  it("lets fleets book several vehicles in one call", async () => {
     const { server } = ctx;
-    const { vehicle } = await seed(server);
-    await request(server).post("/care/catalog/seed-default").expect(201);
-    await request(server).post("/care/bays").send({ name: "Bay 1" }).expect(201);
-
-    const appt = (
-      await request(server)
-        .post("/care/appointments")
-        .send({ vehicleId: vehicle.id, serviceCodes: ["BATT-HEALTH"], start: "2026-05-01T10:00:00Z" })
-        .expect(201)
-    ).body.appointment;
-    await request(server).post(`/care/appointments/${appt.id}/start`).expect(200);
-    await request(server).post(`/care/appointments/${appt.id}/complete`).expect(200);
-
-    const report = await request(server)
-      .get("/reports/revenue")
-      .query({ from: "2026-05-01T00:00:00Z", to: "2026-05-02T00:00:00Z" })
-      .expect(200);
-    expect(report.body.care.total).toBe(8900);
+    await request(server).post("/services/seed-default").expect(201);
+    const fleet = (await request(server).post("/customers").send({ kind: "fleet", name: "Ops", company: "Metro Vans" }).expect(201)).body.customer;
+    const ids: string[] = [];
+    for (const model of ["E-Transit", "EDV"]) {
+      ids.push((await request(server).post(`/customers/${fleet.id}/vehicles`).send({ make: "X", model }).expect(201)).body.vehicle.id);
+    }
+    const res = await request(server)
+      .post(`/fleet/${fleet.id}/requests`)
+      .send({ requests: ids.map((vehicleId) => ({ vehicleId, serviceCode: "ADAS_SENSOR", location: SPOT })) })
+      .expect(201);
+    expect(res.body.requests).toHaveLength(2);
+    expect((await request(server).get("/requests").query({ status: "requested" })).body.requests).toHaveLength(2);
   });
 
-  it("filters stations and reports availability", async () => {
+  it("updates prices with decimal input and settings", async () => {
     const { server } = ctx;
-    const { station } = await seed(server);
-    expect((await request(server).get("/stations").query({ connectorType: "CCS2" })).body.stations).toHaveLength(1);
-    expect((await request(server).get("/stations").query({ connectorType: "NACS" })).body.stations).toHaveLength(0);
-    expect((await request(server).get("/stations").query({ connectorType: "bogus" })).status).toBe(400);
-    const avail = await request(server).get(`/stations/${station.id}/availability`).expect(200);
-    expect(avail.body.connectors[0].status).toBe("available");
+    await request(server).post("/services/seed-default").expect(201);
+    const res = await request(server).patch("/services/MOBILE_CHARGING").send({ unitPrice: "0.60" }).expect(200);
+    expect(res.body.service.unitPrice).toBe(60);
+    const s = await request(server).patch("/settings").send({ commissionBps: 1800 }).expect(200);
+    expect(s.body.settings).toEqual({ commissionBps: 1800, autonomousApiEnabled: false });
   });
 });

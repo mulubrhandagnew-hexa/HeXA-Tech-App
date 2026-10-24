@@ -2,196 +2,230 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { Hub } from "./hub.js";
 import { sequentialGenerator } from "../domain/ids.js";
 import { toMs } from "../domain/time.js";
-import { type Station } from "../domain/charging.js";
 
-const NOW = "2026-05-01T08:00:00Z";
+// Downtown LA and a few nearby points.
+const DOWNTOWN = { latitude: 34.0522, longitude: -118.2437 };
+const NEAR = { latitude: 34.06, longitude: -118.25 }; // < 1 mile
+const MID = { latitude: 34.1, longitude: -118.3 }; // ~4.6 miles
+const FAR = { latitude: 34.0094, longitude: -118.4973 }; // ~14 miles
 
 function setup() {
-  let now = toMs(NOW);
+  let now = toMs("2026-05-01T08:00:00Z");
   const hub = new Hub(undefined, sequentialGenerator("h"), () => now);
-  const customer = hub.addCustomer({ name: "Abebe", email: "abebe@example.com" });
-  const vehicle = hub.addVehicle({ customerId: customer.id, make: "Hyundai", model: "Ioniq 5", connectorTypes: ["CCS2"] });
-  const other = hub.addCustomer({ name: "Sara" });
-  const otherVehicle = hub.addVehicle({ customerId: other.id, make: "BYD", model: "Atto 3", connectorTypes: [] });
-  const station = hub.addStation({
-    name: "HeXA Hub Bole",
-    address: "Bole Rd, Addis Ababa",
-    latitude: 8.99,
-    longitude: 38.79,
-    connectors: [
-      { type: "CCS2", maxPowerKw: 150, pricePerKwh: 45, idleFeePerMinute: 40 },
-      { type: "Type2", maxPowerKw: 22, pricePerKwh: 30, idleFeePerMinute: 10 },
-    ],
-  });
-  const [dc, ac] = station.connectors as [Station["connectors"][0], Station["connectors"][0]];
-  return { hub, customer, vehicle, other, otherVehicle, station, dc, ac, setNow: (iso: string) => (now = toMs(iso)) };
+  hub.seedDefaultCatalog();
+  const owner = hub.addCustomer({ kind: "individual", name: "Abebe" });
+  const car = hub.addVehicle(owner.id, { make: "Hyundai", model: "Ioniq 5", connectorTypes: ["CCS1"] });
+  const fleet = hub.addCustomer({ kind: "fleet", name: "Ops desk", company: "Metro Vans" });
+  const van1 = hub.addVehicle(fleet.id, { make: "Ford", model: "E-Transit", connectorTypes: ["CCS1"] });
+  const van2 = hub.addVehicle(fleet.id, { make: "Rivian", model: "EDV", connectorTypes: ["CCS1"], autonomous: true });
+
+  const activeProvider = (name: string, at: typeof DOWNTOWN, services: Parameters<Hub["applyAsProvider"]>[0]["services"], connectors: Array<"CCS1" | "NACS"> = ["CCS1"]) => {
+    const p = hub.applyAsProvider({ name, services, connectorTypes: connectors, serviceRadiusMiles: 10 });
+    hub.verifyProvider(p.id);
+    return hub.setProviderOnline(p.id, true, at);
+  };
+  return {
+    hub,
+    owner,
+    car,
+    fleet,
+    van1,
+    van2,
+    activeProvider,
+    advance: (minutes: number) => (now += minutes * 60_000),
+  };
 }
 
-describe("charging network", () => {
-  let ctx: ReturnType<typeof setup>;
-  beforeEach(() => {
-    ctx = setup();
+describe("providers", () => {
+  it("must be verified before going online", () => {
+    const { hub } = setup();
+    const p = hub.applyAsProvider({ name: "Sam", services: ["DETAILING"], serviceRadiusMiles: 5 });
+    expect(p.status).toBe("pending");
+    expect(() => hub.setProviderOnline(p.id, true, DOWNTOWN)).toThrow(/pending/);
+    hub.verifyProvider(p.id);
+    expect(hub.setProviderOnline(p.id, true, DOWNTOWN).online).toBe(true);
   });
 
-  it("filters stations by connector type and power", () => {
-    expect(ctx.hub.listStations({ connectorType: "CCS2" })).toHaveLength(1);
-    expect(ctx.hub.listStations({ connectorType: "NACS" })).toHaveLength(0);
-    expect(ctx.hub.listStations({ minPowerKw: 200 })).toHaveLength(0);
-  });
-
-  it("refuses an incompatible connector", () => {
-    const { hub, station, ac, vehicle } = ctx;
-    expect(() =>
-      hub.startSession({ stationId: station.id, connectorId: ac.id, vehicleId: vehicle.id, startMeterWh: 0 }),
-    ).toThrow(/accepts CCS2 but connector is Type2/);
-  });
-
-  it("runs a walk-in session end to end and bills energy plus idle time", () => {
-    const { hub, station, dc, vehicle, customer } = ctx;
-    const session = hub.startSession({ stationId: station.id, connectorId: dc.id, vehicleId: vehicle.id, startMeterWh: 100_000 });
-    expect(hub.availability(station.id)[0]!.status).toBe("charging");
-
-    hub.markChargingComplete(session.id, "2026-05-01T08:40:00Z");
-    const done = hub.stopSession(session.id, { endMeterWh: 152_000, at: "2026-05-01T09:05:00Z" });
-    // 52 kWh × 45¢ = $23.40; 25 min plugged in after full − 10 min grace = 15 × 40¢ = $6.00
-    expect(done.bill).toEqual({ energyWh: 52_000, energy: 2340, idleMinutes: 15, idle: 600, total: 2940 });
-    expect(hub.availability(station.id)[0]!.status).toBe("available");
-    expect(hub.customerStatement(customer.id).chargingTotal).toBe(2940);
-  });
-
-  it("keeps the price snapshot from session start", () => {
-    const { hub, station, dc, vehicle } = ctx;
-    const session = hub.startSession({ stationId: station.id, connectorId: dc.id, vehicleId: vehicle.id, startMeterWh: 0 });
-    expect(session.pricePerKwh).toBe(45);
-  });
-
-  it("blocks a second session on a busy connector or for a busy vehicle", () => {
-    const { hub, station, dc, ac, vehicle, otherVehicle } = ctx;
-    hub.startSession({ stationId: station.id, connectorId: dc.id, vehicleId: vehicle.id, startMeterWh: 0 });
-    expect(() =>
-      hub.startSession({ stationId: station.id, connectorId: dc.id, vehicleId: otherVehicle.id, startMeterWh: 0 }),
-    ).toThrow(/already in use/);
-    hub.startSession({ stationId: station.id, connectorId: ac.id, vehicleId: otherVehicle.id, startMeterWh: 0 });
-    expect(() =>
-      hub.startSession({ stationId: station.id, connectorId: ac.id, vehicleId: otherVehicle.id, startMeterWh: 0 }),
-    ).toThrow();
-  });
-
-  it("rejects overlapping reservations on the same connector", () => {
-    const { hub, station, dc, vehicle, otherVehicle } = ctx;
-    hub.reserve({ stationId: station.id, connectorId: dc.id, vehicleId: vehicle.id, start: "2026-05-01T10:00:00Z", end: "2026-05-01T11:00:00Z" });
-    expect(() =>
-      hub.reserve({ stationId: station.id, connectorId: dc.id, vehicleId: otherVehicle.id, start: "2026-05-01T10:30:00Z", end: "2026-05-01T11:30:00Z" }),
-    ).toThrow(/already reserved/);
-    // Back-to-back is fine.
-    hub.reserve({ stationId: station.id, connectorId: dc.id, vehicleId: otherVehicle.id, start: "2026-05-01T11:00:00Z", end: "2026-05-01T11:30:00Z" });
-  });
-
-  it("validates reservation length", () => {
-    const { hub, station, dc, vehicle } = ctx;
-    expect(() =>
-      hub.reserve({ stationId: station.id, connectorId: dc.id, vehicleId: vehicle.id, start: "2026-05-01T10:00:00Z", end: "2026-05-01T10:05:00Z" }),
-    ).toThrow(/between 15 and 240/);
-  });
-
-  it("holds a reserved connector for its driver and fulfils the reservation on plug-in", () => {
-    const { hub, station, dc, vehicle, otherVehicle, setNow } = ctx;
-    const r = hub.reserve({ stationId: station.id, connectorId: dc.id, vehicleId: vehicle.id, start: "2026-05-01T10:00:00Z", end: "2026-05-01T11:00:00Z" });
-
-    setNow("2026-05-01T09:50:00Z"); // inside the 15-minute early-arrival window
-    expect(() =>
-      hub.startSession({ stationId: station.id, connectorId: dc.id, vehicleId: otherVehicle.id, startMeterWh: 0 }),
-    ).toThrow(/reserved by another driver/);
-
-    setNow("2026-05-01T10:05:00Z");
-    expect(hub.availability(station.id)[0]!.status).toBe("reserved");
-    const session = hub.startSession({ stationId: station.id, connectorId: dc.id, vehicleId: vehicle.id, startMeterWh: 0 });
-    expect(session.reservationId).toBe(r.id);
-    expect(hub.listReservations()[0]!.status).toBe("fulfilled");
-  });
-
-  it("cancels only booked reservations", () => {
-    const { hub, station, dc, vehicle } = ctx;
-    const r = hub.reserve({ stationId: station.id, connectorId: dc.id, vehicleId: vehicle.id, start: "2026-05-01T10:00:00Z", end: "2026-05-01T11:00:00Z" });
-    expect(hub.cancelReservation(r.id).status).toBe("cancelled");
-    expect(() => hub.cancelReservation(r.id)).toThrow(/cannot be cancelled/);
-  });
-
-  it("can't take a connector out of service mid-session", () => {
-    const { hub, station, dc, ac, vehicle } = ctx;
-    hub.startSession({ stationId: station.id, connectorId: dc.id, vehicleId: vehicle.id, startMeterWh: 0 });
-    expect(() => hub.setConnectorOutOfService(station.id, dc.id, true)).toThrow(/active charging session/);
-    hub.setConnectorOutOfService(station.id, ac.id, true);
-    expect(hub.availability(station.id)[1]!.status).toBe("out_of_service");
+  it("charging providers must declare their connectors", () => {
+    const { hub } = setup();
+    expect(() => hub.applyAsProvider({ name: "X", services: ["MOBILE_CHARGING"], serviceRadiusMiles: 5 })).toThrow(/connectors/);
   });
 });
 
-describe("car care", () => {
+describe("matching", () => {
   let ctx: ReturnType<typeof setup>;
   beforeEach(() => {
     ctx = setup();
-    ctx.hub.seedDefaultCatalog();
   });
 
-  it("seeds the catalog idempotently", () => {
-    const n = ctx.hub.listCatalog().length;
-    expect(n).toBeGreaterThan(5);
-    expect(ctx.hub.seedDefaultCatalog()).toHaveLength(n);
+  it("picks the nearest eligible provider and skips the wrong skills, connectors and range", () => {
+    const { hub, car, activeProvider } = ctx;
+    const mid = activeProvider("Mid", MID, ["MOBILE_CHARGING"]);
+    activeProvider("Near but detailer", NEAR, ["DETAILING"]);
+    activeProvider("Near but NACS only", NEAR, ["MOBILE_CHARGING"], ["NACS"]);
+    activeProvider("Out of range", FAR, ["MOBILE_CHARGING"]);
+
+    const r = hub.requestService({ vehicleId: car.id, serviceCode: "MOBILE_CHARGING", location: DOWNTOWN });
+    expect(hub.candidates(r.id).map((c) => c.provider.name)).toEqual(["Mid"]);
+    const matched = hub.match(r.id);
+    expect(matched.providerId).toBe(mid.id);
+    expect(matched.etaMinutes).toBeGreaterThan(5);
   });
 
-  it("books services back-to-back and auto-assigns a free bay", () => {
-    const { hub, vehicle, otherVehicle } = ctx;
-    const bay1 = hub.addBay("Bay 1");
-    const bay2 = hub.addBay("Bay 2");
-    const a = hub.bookAppointment({ vehicleId: vehicle.id, serviceCodes: ["BATT-HEALTH", "TIRE-ROTATE"], start: "2026-05-01T09:00:00Z" });
-    expect(a.bayId).toBe(bay1.id);
-    expect(a.end).toBe("2026-05-01T10:15:00.000Z"); // 45 + 30 min
-    expect(a.total).toBe(8900 + 4900);
+  it("keeps busy and offline providers out, and reports when nobody is available", () => {
+    const { hub, car, van1, activeProvider } = ctx;
+    const p = activeProvider("Solo", NEAR, ["MOBILE_CHARGING"]);
+    const a = hub.requestService({ vehicleId: car.id, serviceCode: "MOBILE_CHARGING", location: DOWNTOWN });
+    hub.match(a.id);
+    const b = hub.requestService({ vehicleId: van1.id, serviceCode: "MOBILE_CHARGING", location: DOWNTOWN });
+    expect(() => hub.match(b.id)).toThrow(/no provider is available/);
 
-    const b = hub.bookAppointment({ vehicleId: otherVehicle.id, serviceCodes: ["SW-DIAG"], start: "2026-05-01T09:30:00Z" });
-    expect(b.bayId).toBe(bay2.id);
+    hub.cancel(a.id);
+    hub.setProviderOnline(p.id, false);
+    expect(hub.candidates(b.id)).toHaveLength(0);
+  });
+
+  it("re-matches to someone else after a decline", () => {
+    const { hub, car, activeProvider } = ctx;
+    const first = activeProvider("First", NEAR, ["TIRE"]);
+    const second = activeProvider("Second", MID, ["TIRE"]);
+    const r = hub.requestService({ vehicleId: car.id, serviceCode: "TIRE", location: DOWNTOWN });
+    expect(hub.match(r.id).providerId).toBe(first.id);
+    expect(hub.decline(r.id, first.id).status).toBe("requested");
+    expect(hub.match(r.id).providerId).toBe(second.id);
+  });
+
+  it("refuses a duplicate open request for the same vehicle and service", () => {
+    const { hub, car } = ctx;
+    hub.requestService({ vehicleId: car.id, serviceCode: "DETAILING", location: DOWNTOWN });
+    expect(() => hub.requestService({ vehicleId: car.id, serviceCode: "DETAILING", location: DOWNTOWN })).toThrow(/already has an open/);
+  });
+});
+
+describe("job lifecycle", () => {
+  it("runs Request → Match → Track → Service → Complete and pays everyone correctly", () => {
+    const { hub, car, owner, activeProvider, advance } = setup();
+    const p = activeProvider("Charger Van 1", MID, ["MOBILE_CHARGING"]);
+    const r = hub.requestService({ vehicleId: car.id, serviceCode: "MOBILE_CHARGING", location: { ...DOWNTOWN, address: "Office garage, level 2" } });
+
+    hub.match(r.id);
+    const enRoute = hub.depart(r.id, p.id);
+    hub.updateProviderLocation(p.id, NEAR);
+    expect(hub.getRequest(r.id).etaMinutes).toBeLessThan(enRoute.etaMinutes!);
+
+    advance(15);
+    hub.arrive(r.id, p.id);
+    hub.startService(r.id, p.id);
+    advance(60);
+    const finished = hub.finishService(r.id, p.id, 40_000); // 40 kWh
+    expect(finished.status).toBe("awaiting_confirmation");
+    // $25.00 call-out + 40 kWh × $0.55 = $47.00; 20% commission = $9.40
+    expect(finished.bill).toEqual({ callout: 2500, quantity: 40_000, metered: 2200, total: 4700, platformFee: 940, providerPayout: 3760 });
+
+    hub.confirm(r.id, { stars: 5, comment: "Charged while I worked" });
+    expect(hub.customerStatement(owner.id).total).toBe(4700);
+    const earnings = hub.providerEarnings(p.id);
+    expect(earnings.total).toBe(3760);
+    expect(earnings.averageRating).toBe(5);
+  });
+
+  it("only lets the assigned provider move the job, in order", () => {
+    const { hub, car, activeProvider } = setup();
+    const p = activeProvider("A", NEAR, ["BATTERY_12V"]);
+    const other = activeProvider("B", MID, ["BATTERY_12V"]);
+    const r = hub.requestService({ vehicleId: car.id, serviceCode: "BATTERY_12V", location: DOWNTOWN });
+    hub.match(r.id);
+    expect(() => hub.depart(r.id, other.id)).toThrow(/not assigned/);
+    expect(() => hub.arrive(r.id, p.id)).toThrow(/expected en_route/);
+    expect(() => hub.finishService(r.id, p.id)).toThrow(/expected in_service/);
+  });
+
+  it("cancels free before departure and charges the call-out fee after", () => {
+    const { hub, car, owner, fleet, van1, activeProvider } = setup();
+    activeProvider("A", NEAR, ["ROADSIDE"]);
+
+    const free = hub.requestService({ vehicleId: car.id, serviceCode: "ROADSIDE", location: DOWNTOWN });
+    hub.match(free.id);
+    expect(hub.cancel(free.id).cancellationFee).toBeUndefined();
+
+    const late = hub.requestService({ vehicleId: van1.id, serviceCode: "ROADSIDE", location: DOWNTOWN });
+    const matched = hub.match(late.id);
+    hub.depart(late.id, matched.providerId!);
+    expect(hub.cancel(late.id).cancellationFee).toBe(8900);
+    expect(hub.customerStatement(owner.id).total).toBe(0);
+    expect(hub.customerStatement(fleet.id).total).toBe(8900);
+  });
+
+  it("can't cancel once work has started", () => {
+    const { hub, car, activeProvider } = setup();
+    const p = activeProvider("A", NEAR, ["DETAILING"]);
+    const r = hub.requestService({ vehicleId: car.id, serviceCode: "DETAILING", location: DOWNTOWN });
+    hub.match(r.id);
+    hub.depart(r.id, p.id);
+    hub.arrive(r.id, p.id);
+    hub.startService(r.id, p.id);
+    expect(() => hub.cancel(r.id)).toThrow(/in_service cannot be cancelled/);
+  });
+
+  it("quotes the price at request time even if the catalog changes", () => {
+    const { hub, car } = setup();
+    const r = hub.requestService({ vehicleId: car.id, serviceCode: "MOBILE_CHARGING", location: DOWNTOWN });
+    hub.updateOffering("MOBILE_CHARGING", { unitPrice: 99 });
+    expect(hub.getRequest(r.id).quote.unitPrice).toBe(55);
+    expect(() => hub.updateOffering("DETAILING", { unitPrice: 10 })).toThrow(/not metered/);
+  });
+});
+
+describe("fleets and autonomous vehicles", () => {
+  it("books several fleet vehicles at once, all or nothing", () => {
+    const { hub, fleet, van1, van2, car } = setup();
+    const made = hub.requestFleetService(fleet.id, [
+      { vehicleId: van1.id, serviceCode: "MOBILE_CHARGING", location: DOWNTOWN },
+      { vehicleId: van2.id, serviceCode: "ADAS_SENSOR", location: DOWNTOWN },
+    ]);
+    expect(made.map((r) => r.source)).toEqual(["fleet", "fleet"]);
+
+    const before = hub.listRequests().length;
     expect(() =>
-      hub.bookAppointment({ vehicleId: otherVehicle.id, serviceCodes: ["CABIN-FILTER"], start: "2026-05-01T09:45:00Z" }),
-    ).toThrow(/no bay is free/);
+      hub.requestFleetService(fleet.id, [
+        { vehicleId: van1.id, serviceCode: "TIRE", location: DOWNTOWN },
+        { vehicleId: car.id, serviceCode: "TIRE", location: DOWNTOWN }, // not a fleet vehicle
+      ]),
+    ).toThrow(/does not belong/);
+    expect(hub.listRequests()).toHaveLength(before);
   });
 
-  it("rejects unknown services and past start times", () => {
-    const { hub, vehicle } = ctx;
-    hub.addBay("Bay 1");
-    expect(() => hub.bookAppointment({ vehicleId: vehicle.id, serviceCodes: ["NOPE"], start: "2026-05-01T09:00:00Z" })).toThrow(/unknown care service/);
-    expect(() => hub.bookAppointment({ vehicleId: vehicle.id, serviceCodes: ["SW-DIAG"], start: "2026-04-30T09:00:00Z" })).toThrow(/future/);
-  });
-
-  it("enforces the appointment lifecycle and frees the bay on cancel", () => {
-    const { hub, vehicle } = ctx;
-    hub.addBay("Bay 1");
-    const a = hub.bookAppointment({ vehicleId: vehicle.id, serviceCodes: ["SW-DIAG"], start: "2026-05-01T09:00:00Z" });
-    expect(() => hub.completeAppointment(a.id)).toThrow(/expected in_progress/);
-    hub.cancelAppointment(a.id);
-    hub.bookAppointment({ vehicleId: vehicle.id, serviceCodes: ["SW-DIAG"], start: "2026-05-01T09:00:00Z" });
+  it("keeps the autonomous API off until enabled, then only for autonomous vehicles", () => {
+    const { hub, van1, van2 } = setup();
+    const req = { vehicleId: van2.id, serviceCode: "MOBILE_CHARGING" as const, location: DOWNTOWN };
+    expect(() => hub.requestService(req, "autonomous_api")).toThrow(/not yet active/);
+    hub.updateSettings({ autonomousApiEnabled: true });
+    expect(hub.requestService(req, "autonomous_api").source).toBe("autonomous_api");
+    expect(() => hub.requestService({ ...req, vehicleId: van1.id }, "autonomous_api")).toThrow(/not registered as autonomous/);
   });
 });
 
 describe("reporting", () => {
-  it("combines charging and care revenue for a period", () => {
-    const { hub, station, dc, vehicle, customer } = setup();
-    hub.seedDefaultCatalog();
-    hub.addBay("Bay 1");
-
-    const s = hub.startSession({ stationId: station.id, connectorId: dc.id, vehicleId: vehicle.id, startMeterWh: 0 });
-    hub.stopSession(s.id, { endMeterWh: 20_000, at: "2026-05-01T08:30:00Z" }); // $9.00
-
-    const a = hub.bookAppointment({ vehicleId: vehicle.id, serviceCodes: ["DETAIL-EXT", "CABIN-FILTER"], start: "2026-05-01T09:00:00Z" });
-    hub.startAppointment(a.id);
-    hub.completeAppointment(a.id);
+  it("splits gross revenue into platform fees and provider payouts", () => {
+    const { hub, car, van1, activeProvider } = setup();
+    const p = activeProvider("A", NEAR, ["DETAILING", "TOWING"]);
+    const run = (vehicleId: string, code: "DETAILING" | "TOWING", qty: number) => {
+      const r = hub.requestService({ vehicleId, serviceCode: code, location: DOWNTOWN });
+      hub.match(r.id, p.id);
+      hub.depart(r.id, p.id);
+      hub.arrive(r.id, p.id);
+      hub.startService(r.id, p.id);
+      hub.finishService(r.id, p.id, qty);
+      hub.confirm(r.id);
+    };
+    run(car.id, "DETAILING", 0); // $79.00
+    run(van1.id, "TOWING", 12_500); // $125.00 + 12.5 mi × $4.50 = $181.25
 
     const report = hub.revenueReport("2026-05-01T00:00:00Z", "2026-05-02T00:00:00Z");
-    expect(report.charging).toEqual({ sessions: 1, energyWh: 20_000, energy: 900, idle: 0, total: 900 });
-    expect(report.care.total).toBe(6900 + 3900);
-    expect(report.care.byService[0]).toEqual({ code: "DETAIL-EXT", count: 1, total: 6900 });
-    expect(report.total).toBe(900 + 10800);
-
-    expect(hub.customerStatement(customer.id).total).toBe(900 + 10800);
-    expect(hub.revenueReport("2026-05-02T00:00:00Z", "2026-05-03T00:00:00Z").total).toBe(0);
+    expect(report.jobs).toBe(2);
+    expect(report.gross).toBe(7900 + 18125);
+    expect(report.platformFees + report.providerPayouts).toBe(report.gross);
+    expect(report.byService[0]).toEqual({ code: "TOWING", jobs: 1, gross: 18125 });
+    expect(hub.revenueReport("2026-05-02T00:00:00Z", "2026-05-03T00:00:00Z").gross).toBe(0);
   });
 });

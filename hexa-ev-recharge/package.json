@@ -1,7 +1,7 @@
 {
   "name": "hexa-ev-recharge",
   "version": "0.1.0",
-  "description": "HeXA EV ReCharge (a HeXA Tech LLC brand) — EV recharge and EV car care service.",
+  "description": "Mobile EV Recharge (HeXA EV ReCharge, a HeXA Tech LLC brand) — on-demand mobile EV charging and vehicle services marketplace.",
   "type": "module",
   "engines": {
     "node": ">=20"

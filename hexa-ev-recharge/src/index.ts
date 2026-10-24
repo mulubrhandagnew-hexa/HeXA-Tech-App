@@ -1,5 +1,5 @@
 /**
- * HeXA EV ReCharge server bootstrap.
+ * Mobile EV Recharge (HeXA EV ReCharge) server bootstrap.
  *
  * Env:
  *   PORT        — HTTP port (default 3100)

@@ -1,120 +1,118 @@
 /**
- * Hub — the application service for the HeXA EV ReCharge. It owns customers and
- * vehicles, the charging network (stations, reservations, sessions) and the
- * car care shop (catalog, bays, appointments), and enforces the rules that
- * keep them consistent. This is the main entry point used by the API.
+ * Hub — the application service for Mobile EV Recharge, an on-demand
+ * marketplace where independent providers bring charging and vehicle
+ * services to the vehicle. It owns customers, vehicles, providers, the
+ * service catalog and service requests, and enforces the dispatch lifecycle:
+ *
+ *   Request → Match → Track (en route, ETA) → Service → Complete (confirm, pay, rate)
  */
 import { type Cents, addCents } from "../domain/money.js";
 import { type IdGenerator, uuidGenerator } from "../domain/ids.js";
 import { HubError } from "../domain/errors.js";
-import { MINUTE_MS, overlaps, toIso, toMs } from "../domain/time.js";
-import { type Customer, type Vehicle } from "../domain/customers.js";
+import { toIso, toMs } from "../domain/time.js";
+import { type GeoPoint, assertPoint, distanceMiles, etaMinutes } from "../domain/geo.js";
 import {
-  type ChargingSession,
-  type Connector,
-  type ConnectorType,
-  type Reservation,
-  type Station,
-  MAX_RESERVATION_MINUTES,
-  MIN_RESERVATION_MINUTES,
+  type ServiceCode,
+  type ServiceOffering,
+  DEFAULT_CATALOG,
   computeBill,
-} from "../domain/charging.js";
+} from "../domain/catalog.js";
+import { type ConnectorType, type Customer, type Provider, type Vehicle } from "../domain/parties.js";
 import {
-  type CareAppointment,
-  type CareService,
-  type ServiceBay,
-  DEFAULT_CARE_CATALOG,
-} from "../domain/carcare.js";
+  type Rating,
+  type RequestSource,
+  type RequestStatus,
+  type ServiceLocation,
+  type ServiceRequest,
+  ACTIVE_JOB_STATUSES,
+} from "../domain/requests.js";
+
+export interface HubSettings {
+  /** Platform commission in basis points (2000 = 20%). */
+  commissionBps: number;
+  /** Vehicle-initiated requests from autonomous fleets. Off until the integration launches. */
+  autonomousApiEnabled: boolean;
+}
+
+export const DEFAULT_SETTINGS: HubSettings = { commissionBps: 2000, autonomousApiEnabled: false };
 
 export interface HubState {
+  settings: HubSettings;
   customers: Customer[];
   vehicles: Vehicle[];
-  stations: Station[];
-  reservations: Reservation[];
-  sessions: ChargingSession[];
-  catalog: CareService[];
-  bays: ServiceBay[];
-  appointments: CareAppointment[];
+  providers: Provider[];
+  catalog: ServiceOffering[];
+  requests: ServiceRequest[];
 }
 
 export function emptyState(): HubState {
-  return {
-    customers: [],
-    vehicles: [],
-    stations: [],
-    reservations: [],
-    sessions: [],
-    catalog: [],
-    bays: [],
-    appointments: [],
-  };
+  return { settings: { ...DEFAULT_SETTINGS }, customers: [], vehicles: [], providers: [], catalog: [], requests: [] };
 }
 
 export type Clock = () => number;
 
-/** A driver may plug in this many minutes before their reservation starts. */
-export const EARLY_ARRIVAL_MINUTES = 15;
-
-export interface NewConnector {
-  type: ConnectorType;
-  maxPowerKw: number;
-  pricePerKwh: Cents;
-  idleFeePerMinute: Cents;
-}
-
-export interface NewStation {
+export interface NewCustomer {
+  kind: Customer["kind"];
   name: string;
-  address: string;
-  latitude: number;
-  longitude: number;
-  connectors: NewConnector[];
+  company?: string;
+  email?: string;
+  phone?: string;
 }
 
-export type ConnectorAvailability = "available" | "reserved" | "charging" | "out_of_service";
+export interface NewVehicle {
+  make: string;
+  model: string;
+  year?: number;
+  plate?: string;
+  connectorTypes: ConnectorType[];
+  autonomous?: boolean;
+}
 
-export interface StartSessionInput {
-  stationId: string;
-  connectorId: string;
+export interface ProviderApplication {
+  name: string;
+  email?: string;
+  phone?: string;
+  services: ServiceCode[];
+  connectorTypes?: ConnectorType[];
+  serviceRadiusMiles: number;
+}
+
+export interface NewRequest {
   vehicleId: string;
-  startMeterWh: number;
-  reservationId?: string;
-  at?: string;
-}
-
-export interface StopSessionInput {
-  endMeterWh: number;
-  at?: string;
-  /** When charging finished, if the charger didn't already report it. */
-  chargingCompletedAt?: string;
-}
-
-export interface BookAppointmentInput {
-  vehicleId: string;
-  serviceCodes: string[];
-  start: string;
-  bayId?: string;
+  serviceCode: ServiceCode;
+  location: ServiceLocation;
   notes?: string;
 }
 
-export interface CustomerStatement {
-  customer: Customer;
-  sessions: ChargingSession[];
-  appointments: CareAppointment[];
-  chargingTotal: Cents;
-  careTotal: Cents;
+export interface Candidate {
+  provider: Provider;
+  distanceMiles: number;
+  etaMinutes: number;
+}
+
+export interface Statement {
+  requests: ServiceRequest[];
   total: Cents;
 }
 
 export interface RevenueReport {
   from: string;
   to: string;
-  charging: { sessions: number; energyWh: number; energy: Cents; idle: Cents; total: Cents };
-  care: { appointments: number; total: Cents; byService: Array<{ code: string; count: number; total: Cents }> };
-  total: Cents;
+  jobs: number;
+  cancellations: number;
+  gross: Cents;
+  platformFees: Cents;
+  providerPayouts: Cents;
+  byService: Array<{ code: ServiceCode; jobs: number; gross: Cents }>;
 }
 
+/** Statuses from which a customer may cancel. Once work starts, the job must be finished. */
+const CANCELLABLE: RequestStatus[] = ["requested", "matched", "en_route", "arrived"];
+/** Cancelling after the provider has set off costs the call-out fee. */
+const CANCELLATION_FEE_STATUSES: RequestStatus[] = ["en_route", "arrived"];
+
 export class Hub {
-  private readonly state: HubState;
+  private state: HubState;
 
   constructor(
     initial: HubState = emptyState(),
@@ -128,9 +126,23 @@ export class Hub {
     return structuredClone(this.state);
   }
 
+  settings(): HubSettings {
+    return { ...this.state.settings };
+  }
+
+  updateSettings(patch: Partial<HubSettings>): HubSettings {
+    const next = { ...this.state.settings, ...patch };
+    if (!Number.isInteger(next.commissionBps) || next.commissionBps < 0 || next.commissionBps > 10000) {
+      throw new HubError("invalid", "commissionBps must be an integer between 0 and 10000");
+    }
+    this.state.settings = next;
+    return { ...next };
+  }
+
   // ---------------------------------------------------------------- customers
 
-  addCustomer(input: Omit<Customer, "id">): Customer {
+  addCustomer(input: NewCustomer): Customer {
+    if (input.kind === "fleet" && !input.company) throw new HubError("invalid", "fleet accounts need a company name");
     const customer: Customer = { id: this.ids(), ...input };
     this.state.customers.push(customer);
     return structuredClone(customer);
@@ -144,388 +156,414 @@ export class Hub {
     return structuredClone(this.customer(id));
   }
 
-  addVehicle(input: Omit<Vehicle, "id">): Vehicle {
-    this.customer(input.customerId);
-    const vehicle: Vehicle = { id: this.ids(), ...input, connectorTypes: [...new Set(input.connectorTypes)] };
+  addVehicle(customerId: string, input: NewVehicle): Vehicle {
+    this.customer(customerId);
+    const vehicle: Vehicle = {
+      id: this.ids(),
+      customerId,
+      ...input,
+      connectorTypes: [...new Set(input.connectorTypes)],
+      autonomous: input.autonomous ?? false,
+    };
     this.state.vehicles.push(vehicle);
     return structuredClone(vehicle);
   }
 
   listVehicles(customerId?: string): Vehicle[] {
-    const all = this.state.vehicles.filter((v) => customerId === undefined || v.customerId === customerId);
-    return structuredClone(all);
+    return structuredClone(this.state.vehicles.filter((v) => customerId === undefined || v.customerId === customerId));
   }
 
-  // ---------------------------------------------------------------- stations
+  // ---------------------------------------------------------------- providers
 
-  addStation(input: NewStation): Station {
-    if (input.connectors.length === 0) throw new HubError("invalid", "a station needs at least one connector");
-    const station: Station = {
+  /** "Become a provider": the application starts as pending until the platform verifies it. */
+  applyAsProvider(input: ProviderApplication): Provider {
+    if (input.services.length === 0) throw new HubError("invalid", "a provider must offer at least one service");
+    if (!(input.serviceRadiusMiles > 0)) throw new HubError("invalid", "serviceRadiusMiles must be positive");
+    const connectorTypes = [...new Set(input.connectorTypes ?? [])];
+    if (input.services.includes("MOBILE_CHARGING") && connectorTypes.length === 0) {
+      throw new HubError("invalid", "mobile charging providers must list the connectors their equipment supports");
+    }
+    const provider: Provider = {
       id: this.ids(),
       name: input.name,
-      address: input.address,
-      latitude: input.latitude,
-      longitude: input.longitude,
-      connectors: input.connectors.map((c) => ({ id: this.ids(), ...c, outOfService: false })),
+      ...(input.email ? { email: input.email } : {}),
+      ...(input.phone ? { phone: input.phone } : {}),
+      services: [...new Set(input.services)],
+      connectorTypes,
+      status: "pending",
+      online: false,
+      serviceRadiusMiles: input.serviceRadiusMiles,
+      ratingTotal: 0,
+      ratingCount: 0,
     };
-    this.state.stations.push(station);
-    return structuredClone(station);
+    this.state.providers.push(provider);
+    return structuredClone(provider);
   }
 
-  listStations(filter: { connectorType?: ConnectorType; minPowerKw?: number } = {}): Station[] {
-    const matches = this.state.stations.filter((s) =>
-      s.connectors.some(
-        (c) =>
-          (filter.connectorType === undefined || c.type === filter.connectorType) &&
-          (filter.minPowerKw === undefined || c.maxPowerKw >= filter.minPowerKw),
-      ),
-    );
-    return structuredClone(matches);
+  verifyProvider(id: string): Provider {
+    const provider = this.provider(id);
+    if (provider.status === "active") throw new HubError("conflict", "provider is already active");
+    provider.status = "active";
+    return structuredClone(provider);
   }
 
-  getStation(id: string): Station {
-    return structuredClone(this.station(id));
+  suspendProvider(id: string): Provider {
+    const provider = this.provider(id);
+    if (this.activeJobOf(id)) throw new HubError("conflict", "provider has a job in progress");
+    provider.status = "suspended";
+    provider.online = false;
+    return structuredClone(provider);
   }
 
-  setConnectorOutOfService(stationId: string, connectorId: string, outOfService: boolean): Connector {
-    const connector = this.connector(stationId, connectorId);
-    if (outOfService && this.activeSessionOn(connectorId)) {
-      throw new HubError("conflict", "connector has an active charging session");
+  /** Provider goes online (with their current location) or offline. */
+  setProviderOnline(id: string, online: boolean, location?: GeoPoint): Provider {
+    const provider = this.provider(id);
+    if (online) {
+      if (provider.status !== "active") throw new HubError("conflict", `provider is ${provider.status}`);
+      if (location) provider.location = { ...assertPoint(location) };
+      if (!provider.location) throw new HubError("invalid", "a location is required to go online");
     }
-    connector.outOfService = outOfService;
-    return structuredClone(connector);
+    provider.online = online;
+    return structuredClone(provider);
   }
 
-  /** Live status of every connector at a station, at `at` (default: now). */
-  availability(stationId: string, at?: string): Array<{ connectorId: string; type: ConnectorType; status: ConnectorAvailability }> {
-    const station = this.station(stationId);
-    const now = at === undefined ? this.clock() : toMs(at, "at");
-    return station.connectors.map((c) => {
-      let status: ConnectorAvailability = "available";
-      if (c.outOfService) status = "out_of_service";
-      else if (this.activeSessionOn(c.id)) status = "charging";
-      else if (this.bookedReservationsOn(c.id).some((r) => overlaps(now, now + 1, toMs(r.start), toMs(r.end))))
-        status = "reserved";
-      return { connectorId: c.id, type: c.type, status };
-    });
-  }
-
-  // ------------------------------------------------------------ reservations
-
-  reserve(input: { stationId: string; connectorId: string; vehicleId: string; start: string; end: string }): Reservation {
-    const connector = this.connector(input.stationId, input.connectorId);
-    const vehicle = this.vehicle(input.vehicleId);
-    this.assertCompatible(vehicle, connector);
-    if (connector.outOfService) throw new HubError("conflict", "connector is out of service");
-
-    const start = toMs(input.start, "start");
-    const end = toMs(input.end, "end");
-    const minutes = (end - start) / MINUTE_MS;
-    if (minutes < MIN_RESERVATION_MINUTES || minutes > MAX_RESERVATION_MINUTES) {
-      throw new HubError(
-        "invalid",
-        `reservation must last between ${MIN_RESERVATION_MINUTES} and ${MAX_RESERVATION_MINUTES} minutes`,
-      );
+  /** Live location ping. Refreshes the ETA of a job the provider is driving to. */
+  updateProviderLocation(id: string, location: GeoPoint): Provider {
+    const provider = this.provider(id);
+    provider.location = { ...assertPoint(location) };
+    const job = this.activeJobOf(id);
+    if (job && (job.status === "matched" || job.status === "en_route")) {
+      job.etaMinutes = etaMinutes(provider.location, job.location);
     }
-    if (end <= this.clock()) throw new HubError("invalid", "reservation must end in the future");
-
-    const clash = this.bookedReservationsOn(connector.id).find((r) => overlaps(start, end, toMs(r.start), toMs(r.end)));
-    if (clash) throw new HubError("conflict", `connector is already reserved ${clash.start} – ${clash.end}`);
-
-    const reservation: Reservation = {
-      id: this.ids(),
-      stationId: input.stationId,
-      connectorId: connector.id,
-      customerId: vehicle.customerId,
-      vehicleId: vehicle.id,
-      start: toIso(start),
-      end: toIso(end),
-      status: "booked",
-    };
-    this.state.reservations.push(reservation);
-    return structuredClone(reservation);
+    return structuredClone(provider);
   }
 
-  listReservations(filter: { customerId?: string; stationId?: string } = {}): Reservation[] {
+  listProviders(filter: { status?: Provider["status"]; service?: ServiceCode } = {}): Provider[] {
     return structuredClone(
-      this.state.reservations.filter(
-        (r) =>
-          (filter.customerId === undefined || r.customerId === filter.customerId) &&
-          (filter.stationId === undefined || r.stationId === filter.stationId),
+      this.state.providers.filter(
+        (p) =>
+          (filter.status === undefined || p.status === filter.status) &&
+          (filter.service === undefined || p.services.includes(filter.service)),
       ),
     );
   }
 
-  cancelReservation(id: string): Reservation {
-    const reservation = this.reservation(id);
-    if (reservation.status !== "booked") {
-      throw new HubError("conflict", `reservation is ${reservation.status} and cannot be cancelled`);
-    }
-    reservation.status = "cancelled";
-    return structuredClone(reservation);
+  getProvider(id: string): Provider {
+    return structuredClone(this.provider(id));
   }
 
-  // ---------------------------------------------------------------- sessions
+  // ---------------------------------------------------------------- catalog
 
-  startSession(input: StartSessionInput): ChargingSession {
-    const connector = this.connector(input.stationId, input.connectorId);
-    const vehicle = this.vehicle(input.vehicleId);
-    this.assertCompatible(vehicle, connector);
-    if (!Number.isSafeInteger(input.startMeterWh) || input.startMeterWh < 0) {
-      throw new HubError("invalid", "startMeterWh must be a non-negative integer");
-    }
-    if (connector.outOfService) throw new HubError("conflict", "connector is out of service");
-    if (this.activeSessionOn(connector.id)) throw new HubError("conflict", "connector is already in use");
-    if (this.state.sessions.some((s) => s.status === "active" && s.vehicleId === vehicle.id)) {
-      throw new HubError("conflict", "vehicle already has an active charging session");
-    }
-
-    const now = input.at === undefined ? this.clock() : toMs(input.at, "at");
-    // Reservations whose window (including the early-arrival allowance) covers now.
-    const covering = this.bookedReservationsOn(connector.id).filter((r) =>
-      overlaps(now, now + 1, toMs(r.start) - EARLY_ARRIVAL_MINUTES * MINUTE_MS, toMs(r.end)),
-    );
-    let reservation: Reservation | undefined;
-    if (input.reservationId !== undefined) {
-      reservation = covering.find((r) => r.id === input.reservationId);
-      if (!reservation) {
-        this.reservation(input.reservationId); // 404 if it doesn't exist at all
-        throw new HubError("conflict", "reservation is not active for this connector at this time");
-      }
-    } else {
-      reservation = covering.find((r) => r.vehicleId === vehicle.id);
-    }
-    if (reservation && reservation.vehicleId !== vehicle.id) {
-      throw new HubError("conflict", "reservation belongs to a different vehicle");
-    }
-    if (covering.some((r) => r.vehicleId !== vehicle.id)) {
-      throw new HubError("conflict", "connector is reserved by another driver");
-    }
-    if (reservation) reservation.status = "fulfilled";
-
-    const session: ChargingSession = {
-      id: this.ids(),
-      stationId: input.stationId,
-      connectorId: connector.id,
-      customerId: vehicle.customerId,
-      vehicleId: vehicle.id,
-      ...(reservation ? { reservationId: reservation.id } : {}),
-      startedAt: toIso(now),
-      startMeterWh: input.startMeterWh,
-      pricePerKwh: connector.pricePerKwh,
-      idleFeePerMinute: connector.idleFeePerMinute,
-      status: "active",
-    };
-    this.state.sessions.push(session);
-    return structuredClone(session);
-  }
-
-  /** Charger reports the battery is full / the vehicle stopped drawing power. Idle fees start after the grace period. */
-  markChargingComplete(sessionId: string, at?: string): ChargingSession {
-    const session = this.activeSession(sessionId);
-    const ms = at === undefined ? this.clock() : toMs(at, "at");
-    if (ms < toMs(session.startedAt)) throw new HubError("invalid", "charging cannot complete before it started");
-    session.chargingCompletedAt = toIso(ms);
-    return structuredClone(session);
-  }
-
-  stopSession(sessionId: string, input: StopSessionInput): ChargingSession {
-    const session = this.activeSession(sessionId);
-    const endedMs = input.at === undefined ? this.clock() : toMs(input.at, "at");
-    if (endedMs < toMs(session.startedAt)) throw new HubError("invalid", "session cannot end before it started");
-    if (input.chargingCompletedAt !== undefined && session.chargingCompletedAt === undefined) {
-      session.chargingCompletedAt = toIso(toMs(input.chargingCompletedAt, "chargingCompletedAt"));
-    }
-    const completedMs = session.chargingCompletedAt === undefined ? undefined : toMs(session.chargingCompletedAt);
-    if (completedMs !== undefined && (completedMs < toMs(session.startedAt) || completedMs > endedMs)) {
-      throw new HubError("invalid", "chargingCompletedAt must fall within the session");
-    }
-    if (!Number.isSafeInteger(input.endMeterWh)) throw new HubError("invalid", "endMeterWh must be an integer");
-
-    const bill = computeBill({
-      startMeterWh: session.startMeterWh,
-      endMeterWh: input.endMeterWh,
-      pricePerKwh: session.pricePerKwh,
-      idleFeePerMinute: session.idleFeePerMinute,
-      ...(completedMs !== undefined ? { chargingCompletedMs: completedMs } : {}),
-      endedMs,
-    });
-    session.status = "completed";
-    session.endedAt = toIso(endedMs);
-    session.endMeterWh = input.endMeterWh;
-    session.bill = bill;
-    return structuredClone(session);
-  }
-
-  listSessions(filter: { customerId?: string; stationId?: string; status?: ChargingSession["status"] } = {}): ChargingSession[] {
-    return structuredClone(
-      this.state.sessions.filter(
-        (s) =>
-          (filter.customerId === undefined || s.customerId === filter.customerId) &&
-          (filter.stationId === undefined || s.stationId === filter.stationId) &&
-          (filter.status === undefined || s.status === filter.status),
-      ),
-    );
-  }
-
-  getSession(id: string): ChargingSession {
-    return structuredClone(this.session(id));
-  }
-
-  // ---------------------------------------------------------------- car care
-
-  seedDefaultCatalog(): CareService[] {
-    for (const service of DEFAULT_CARE_CATALOG) {
-      if (!this.state.catalog.some((s) => s.code === service.code)) this.state.catalog.push({ ...service });
+  seedDefaultCatalog(): ServiceOffering[] {
+    for (const offering of DEFAULT_CATALOG) {
+      if (!this.state.catalog.some((o) => o.code === offering.code)) this.state.catalog.push({ ...offering });
     }
     return this.listCatalog();
   }
 
-  addCareService(service: CareService): CareService {
-    if (this.state.catalog.some((s) => s.code === service.code)) {
-      throw new HubError("conflict", `service code ${service.code} already exists`);
+  /** Change an offering's price or description. Open requests keep the price they were quoted. */
+  updateOffering(code: ServiceCode, patch: Partial<Omit<ServiceOffering, "code" | "unit">>): ServiceOffering {
+    const offering = this.offering(code);
+    if (patch.unitPrice !== undefined && offering.unit === undefined) {
+      throw new HubError("invalid", `${code} is not metered and has no unit price`);
     }
-    if (!Number.isInteger(service.durationMinutes) || service.durationMinutes <= 0) {
-      throw new HubError("invalid", "durationMinutes must be a positive integer");
-    }
-    this.state.catalog.push({ ...service });
-    return { ...service };
+    Object.assign(offering, patch);
+    return { ...offering };
   }
 
-  listCatalog(): CareService[] {
+  listCatalog(): ServiceOffering[] {
     return structuredClone(this.state.catalog);
   }
 
-  addBay(name: string): ServiceBay {
-    const bay: ServiceBay = { id: this.ids(), name };
-    this.state.bays.push(bay);
-    return { ...bay };
-  }
+  // ---------------------------------------------------------------- requests
 
-  listBays(): ServiceBay[] {
-    return structuredClone(this.state.bays);
-  }
-
-  /** Book care services back-to-back in one bay. If no bay is given, the first free bay is chosen. */
-  bookAppointment(input: BookAppointmentInput): CareAppointment {
+  /** A customer requests a service for one of their vehicles at its current location. */
+  requestService(input: NewRequest, source: RequestSource = "app"): ServiceRequest {
     const vehicle = this.vehicle(input.vehicleId);
-    if (input.serviceCodes.length === 0) throw new HubError("invalid", "at least one service is required");
-    if (new Set(input.serviceCodes).size !== input.serviceCodes.length) {
-      throw new HubError("invalid", "duplicate service codes");
-    }
-    const lines = input.serviceCodes.map((code) => {
-      const service = this.state.catalog.find((s) => s.code === code);
-      if (!service) throw new HubError("not_found", `unknown care service ${code}`);
-      return { code: service.code, name: service.name, durationMinutes: service.durationMinutes, price: service.price };
-    });
-    const start = toMs(input.start, "start");
-    if (start <= this.clock()) throw new HubError("invalid", "appointment must start in the future");
-    const end = start + lines.reduce((m, l) => m + l.durationMinutes, 0) * MINUTE_MS;
+    const customer = this.customer(vehicle.customerId);
+    const offering = this.offering(input.serviceCode);
+    assertPoint(input.location);
 
-    const candidates = input.bayId === undefined ? this.state.bays : [this.bay(input.bayId)];
-    if (candidates.length === 0) throw new HubError("conflict", "no service bays are configured");
-    const bay = candidates.find((b) => this.bayIsFree(b.id, start, end));
-    if (!bay) {
-      throw new HubError("conflict", input.bayId ? "bay is booked at that time" : "no bay is free at that time");
+    if (source === "fleet" && customer.kind !== "fleet") {
+      throw new HubError("invalid", "fleet requests require a fleet account");
     }
+    if (source === "autonomous_api") {
+      if (!this.state.settings.autonomousApiEnabled) {
+        throw new HubError("unavailable", "the autonomous vehicle API is not yet active");
+      }
+      if (!vehicle.autonomous) throw new HubError("invalid", "vehicle is not registered as autonomous");
+    }
+    const open = this.state.requests.find(
+      (r) => r.vehicleId === vehicle.id && r.serviceCode === offering.code && !["completed", "cancelled"].includes(r.status),
+    );
+    if (open) throw new HubError("conflict", `vehicle already has an open ${offering.code} request (${open.id})`);
 
-    const appointment: CareAppointment = {
+    const request: ServiceRequest = {
       id: this.ids(),
-      customerId: vehicle.customerId,
+      customerId: customer.id,
       vehicleId: vehicle.id,
-      bayId: bay.id,
-      start: toIso(start),
-      end: toIso(end),
-      lines,
-      total: addCents(...lines.map((l) => l.price)),
-      status: "booked",
+      serviceCode: offering.code,
+      source,
+      location: { ...input.location },
       ...(input.notes ? { notes: input.notes } : {}),
+      quote: {
+        calloutFee: offering.calloutFee,
+        ...(offering.unit ? { unit: offering.unit, unitPrice: offering.unitPrice ?? 0 } : {}),
+      },
+      status: "requested",
+      declinedBy: [],
+      requestedAt: this.now(),
     };
-    this.state.appointments.push(appointment);
-    return structuredClone(appointment);
+    this.state.requests.push(request);
+    return structuredClone(request);
   }
 
-  startAppointment(id: string): CareAppointment {
-    return this.transitionAppointment(id, "booked", "in_progress");
+  /** Fleet coordination: request service for several fleet vehicles at once. All succeed or none do. */
+  requestFleetService(customerId: string, items: NewRequest[]): ServiceRequest[] {
+    const customer = this.customer(customerId);
+    if (customer.kind !== "fleet") throw new HubError("invalid", "fleet requests require a fleet account");
+    if (items.length === 0) throw new HubError("invalid", "at least one request is required");
+    return this.atomically(() =>
+      items.map((item) => {
+        if (this.vehicle(item.vehicleId).customerId !== customerId) {
+          throw new HubError("invalid", `vehicle ${item.vehicleId} does not belong to this fleet`);
+        }
+        return this.requestService(item, "fleet");
+      }),
+    );
   }
 
-  completeAppointment(id: string): CareAppointment {
-    return this.transitionAppointment(id, "in_progress", "completed");
+  getRequest(id: string): ServiceRequest {
+    return structuredClone(this.request(id));
   }
 
-  cancelAppointment(id: string): CareAppointment {
-    return this.transitionAppointment(id, "booked", "cancelled");
-  }
-
-  listAppointments(filter: { customerId?: string; bayId?: string; status?: CareAppointment["status"] } = {}): CareAppointment[] {
+  listRequests(
+    filter: { customerId?: string; providerId?: string; status?: RequestStatus; serviceCode?: ServiceCode } = {},
+  ): ServiceRequest[] {
     return structuredClone(
-      this.state.appointments.filter(
-        (a) =>
-          (filter.customerId === undefined || a.customerId === filter.customerId) &&
-          (filter.bayId === undefined || a.bayId === filter.bayId) &&
-          (filter.status === undefined || a.status === filter.status),
+      this.state.requests.filter(
+        (r) =>
+          (filter.customerId === undefined || r.customerId === filter.customerId) &&
+          (filter.providerId === undefined || r.providerId === filter.providerId) &&
+          (filter.status === undefined || r.status === filter.status) &&
+          (filter.serviceCode === undefined || r.serviceCode === filter.serviceCode),
       ),
     );
   }
 
+  /**
+   * Providers who can take a request now, nearest first: verified, online,
+   * offering the service, within their own radius, free of other jobs, not
+   * having declined it, and (for charging) with equipment the vehicle accepts.
+   */
+  candidates(requestId: string): Candidate[] {
+    const request = this.request(requestId);
+    const vehicle = this.vehicle(request.vehicleId);
+    return this.state.providers
+      .filter(
+        (p) =>
+          p.status === "active" &&
+          p.online &&
+          p.location !== undefined &&
+          p.services.includes(request.serviceCode) &&
+          !request.declinedBy.includes(p.id) &&
+          !this.activeJobOf(p.id) &&
+          (request.serviceCode !== "MOBILE_CHARGING" ||
+            vehicle.connectorTypes.length === 0 ||
+            p.connectorTypes.some((c) => vehicle.connectorTypes.includes(c))),
+      )
+      .map((p) => ({
+        provider: structuredClone(p),
+        distanceMiles: Math.round(distanceMiles(p.location!, request.location) * 10) / 10,
+        etaMinutes: etaMinutes(p.location!, request.location),
+      }))
+      .filter((c) => c.distanceMiles <= c.provider.serviceRadiusMiles)
+      .sort((a, b) => a.distanceMiles - b.distanceMiles);
+  }
+
+  /** Match a request to a provider: the one given, or the nearest eligible one. */
+  match(requestId: string, providerId?: string): ServiceRequest {
+    const request = this.request(requestId);
+    this.expectStatus(request, "requested");
+    const candidates = this.candidates(requestId);
+    const chosen = providerId === undefined ? candidates[0] : candidates.find((c) => c.provider.id === providerId);
+    if (!chosen) {
+      if (providerId !== undefined) this.provider(providerId);
+      throw new HubError("conflict", providerId ? "provider is not eligible for this request" : "no provider is available nearby");
+    }
+    request.status = "matched";
+    request.providerId = chosen.provider.id;
+    request.etaMinutes = chosen.etaMinutes;
+    request.matchedAt = this.now();
+    return structuredClone(request);
+  }
+
+  /** The matched provider turns the job down; it goes back to the queue for someone else. */
+  decline(requestId: string, providerId: string): ServiceRequest {
+    const request = this.assigned(requestId, providerId);
+    this.expectStatus(request, "matched");
+    request.status = "requested";
+    request.declinedBy.push(providerId);
+    delete request.providerId;
+    delete request.etaMinutes;
+    delete request.matchedAt;
+    return structuredClone(request);
+  }
+
+  depart(requestId: string, providerId: string): ServiceRequest {
+    const request = this.assigned(requestId, providerId);
+    this.expectStatus(request, "matched");
+    request.status = "en_route";
+    const provider = this.provider(providerId);
+    if (provider.location) request.etaMinutes = etaMinutes(provider.location, request.location);
+    return structuredClone(request);
+  }
+
+  arrive(requestId: string, providerId: string): ServiceRequest {
+    const request = this.assigned(requestId, providerId);
+    this.expectStatus(request, "en_route");
+    request.status = "arrived";
+    request.etaMinutes = 0;
+    request.arrivedAt = this.now();
+    return structuredClone(request);
+  }
+
+  startService(requestId: string, providerId: string): ServiceRequest {
+    const request = this.assigned(requestId, providerId);
+    this.expectStatus(request, "arrived");
+    request.status = "in_service";
+    request.startedAt = this.now();
+    return structuredClone(request);
+  }
+
+  /** Provider finishes the job and reports the metered quantity (Wh charged, milli-miles towed; 0 otherwise). */
+  finishService(requestId: string, providerId: string, quantity = 0): ServiceRequest {
+    const request = this.assigned(requestId, providerId);
+    this.expectStatus(request, "in_service");
+    request.bill = computeBill(request.quote, quantity, this.state.settings.commissionBps);
+    request.status = "awaiting_confirmation";
+    request.finishedAt = this.now();
+    return structuredClone(request);
+  }
+
+  /** Customer confirms the work (which charges the bill) and optionally rates the provider. */
+  confirm(requestId: string, rating?: Rating): ServiceRequest {
+    const request = this.request(requestId);
+    this.expectStatus(request, "awaiting_confirmation");
+    if (rating) {
+      if (!Number.isInteger(rating.stars) || rating.stars < 1 || rating.stars > 5) {
+        throw new HubError("invalid", "rating must be 1 to 5 stars");
+      }
+      request.rating = { ...rating };
+      const provider = this.provider(request.providerId!);
+      provider.ratingTotal += rating.stars;
+      provider.ratingCount += 1;
+    }
+    request.status = "completed";
+    request.completedAt = this.now();
+    return structuredClone(request);
+  }
+
+  /** Customer cancels. Free until the provider sets off; after that the call-out fee is charged. */
+  cancel(requestId: string): ServiceRequest {
+    const request = this.request(requestId);
+    if (!CANCELLABLE.includes(request.status)) {
+      throw new HubError("conflict", `a request that is ${request.status} cannot be cancelled`);
+    }
+    if (CANCELLATION_FEE_STATUSES.includes(request.status)) {
+      request.cancellationFee = request.quote.calloutFee;
+      request.bill = computeBill({ calloutFee: request.quote.calloutFee }, 0, this.state.settings.commissionBps);
+    }
+    request.status = "cancelled";
+    request.cancelledAt = this.now();
+    return structuredClone(request);
+  }
+
   // ---------------------------------------------------------------- reporting
 
-  /** Everything a customer owes: completed charging sessions and completed care appointments. */
-  customerStatement(customerId: string): CustomerStatement {
+  /** Charges to a customer: confirmed jobs and paid cancellations. */
+  customerStatement(customerId: string): Statement & { customer: Customer } {
     const customer = this.customer(customerId);
-    const sessions = this.state.sessions.filter((s) => s.customerId === customerId && s.status === "completed");
-    const appointments = this.state.appointments.filter((a) => a.customerId === customerId && a.status === "completed");
-    const chargingTotal = addCents(...sessions.map((s) => s.bill!.total));
-    const careTotal = addCents(...appointments.map((a) => a.total));
+    const requests = this.billed().filter((r) => r.customerId === customerId);
+    return structuredClone({ customer, requests, total: addCents(...requests.map((r) => r.bill!.total)) });
+  }
+
+  /** What a provider has earned after the platform commission. */
+  providerEarnings(providerId: string): Statement & { provider: Provider; averageRating: number | null } {
+    const provider = this.provider(providerId);
+    const requests = this.billed().filter((r) => r.providerId === providerId);
     return structuredClone({
-      customer,
-      sessions,
-      appointments,
-      chargingTotal,
-      careTotal,
-      total: chargingTotal + careTotal,
+      provider,
+      requests,
+      total: addCents(...requests.map((r) => r.bill!.providerPayout)),
+      averageRating: provider.ratingCount === 0 ? null : Math.round((provider.ratingTotal / provider.ratingCount) * 10) / 10,
     });
   }
 
-  /** Revenue recognised in [from, to): sessions by end time, care by appointment end time. */
+  /** Platform revenue for [from, to), by completion or cancellation time. */
   revenueReport(from: string, to: string): RevenueReport {
     const fromMs = toMs(from, "from");
     const toMsValue = toMs(to, "to");
     if (toMsValue <= fromMs) throw new HubError("invalid", "`to` must be after `from`");
-    const inRange = (iso: string) => {
-      const ms = toMs(iso);
+    const requests = this.billed().filter((r) => {
+      const ms = toMs((r.completedAt ?? r.cancelledAt)!);
       return ms >= fromMs && ms < toMsValue;
-    };
-
-    const sessions = this.state.sessions.filter((s) => s.status === "completed" && inRange(s.endedAt!));
-    const energyWh = sessions.reduce((sum, s) => sum + s.bill!.energyWh, 0);
-    const energy = addCents(...sessions.map((s) => s.bill!.energy));
-    const idle = addCents(...sessions.map((s) => s.bill!.idle));
-
-    const appointments = this.state.appointments.filter((a) => a.status === "completed" && inRange(a.end));
-    const byService = new Map<string, { code: string; count: number; total: Cents }>();
-    for (const line of appointments.flatMap((a) => a.lines)) {
-      const row = byService.get(line.code) ?? { code: line.code, count: 0, total: 0 };
-      row.count += 1;
-      row.total = addCents(row.total, line.price);
-      byService.set(line.code, row);
+    });
+    const byService = new Map<ServiceCode, { code: ServiceCode; jobs: number; gross: Cents }>();
+    for (const r of requests) {
+      const row = byService.get(r.serviceCode) ?? { code: r.serviceCode, jobs: 0, gross: 0 };
+      row.jobs += 1;
+      row.gross = addCents(row.gross, r.bill!.total);
+      byService.set(r.serviceCode, row);
     }
-    const careTotal = addCents(...appointments.map((a) => a.total));
-
     return {
       from: toIso(fromMs),
       to: toIso(toMsValue),
-      charging: { sessions: sessions.length, energyWh, energy, idle, total: energy + idle },
-      care: {
-        appointments: appointments.length,
-        total: careTotal,
-        byService: [...byService.values()].sort((a, b) => b.total - a.total),
-      },
-      total: energy + idle + careTotal,
+      jobs: requests.filter((r) => r.status === "completed").length,
+      cancellations: requests.filter((r) => r.status === "cancelled").length,
+      gross: addCents(...requests.map((r) => r.bill!.total)),
+      platformFees: addCents(...requests.map((r) => r.bill!.platformFee)),
+      providerPayouts: addCents(...requests.map((r) => r.bill!.providerPayout)),
+      byService: [...byService.values()].sort((a, b) => b.gross - a.gross),
     };
   }
 
   // ---------------------------------------------------------------- internals
+
+  private now(): string {
+    return toIso(this.clock());
+  }
+
+  /** Requests whose bill has been charged. */
+  private billed(): ServiceRequest[] {
+    return this.state.requests.filter((r) => r.bill !== undefined && (r.status === "completed" || r.status === "cancelled"));
+  }
+
+  private atomically<T>(fn: () => T): T {
+    const before = structuredClone(this.state);
+    try {
+      return fn();
+    } catch (e) {
+      this.state = before;
+      throw e;
+    }
+  }
+
+  private expectStatus(request: ServiceRequest, status: RequestStatus): void {
+    if (request.status !== status) {
+      throw new HubError("conflict", `request is ${request.status}; expected ${status}`);
+    }
+  }
+
+  private assigned(requestId: string, providerId: string): ServiceRequest {
+    const request = this.request(requestId);
+    if (request.providerId !== providerId) throw new HubError("forbidden", "request is not assigned to this provider");
+    return request;
+  }
+
+  private activeJobOf(providerId: string): ServiceRequest | undefined {
+    return this.state.requests.find((r) => r.providerId === providerId && ACTIVE_JOB_STATUSES.includes(r.status));
+  }
 
   private customer(id: string): Customer {
     const found = this.state.customers.find((c) => c.id === id);
@@ -539,84 +577,21 @@ export class Hub {
     return found;
   }
 
-  private station(id: string): Station {
-    const found = this.state.stations.find((s) => s.id === id);
-    if (!found) throw new HubError("not_found", `station ${id} not found`);
+  private provider(id: string): Provider {
+    const found = this.state.providers.find((p) => p.id === id);
+    if (!found) throw new HubError("not_found", `provider ${id} not found`);
     return found;
   }
 
-  private connector(stationId: string, connectorId: string): Connector {
-    const found = this.station(stationId).connectors.find((c) => c.id === connectorId);
-    if (!found) throw new HubError("not_found", `connector ${connectorId} not found at station ${stationId}`);
+  private offering(code: ServiceCode): ServiceOffering {
+    const found = this.state.catalog.find((o) => o.code === code);
+    if (!found) throw new HubError("not_found", `service ${code} is not offered`);
     return found;
   }
 
-  private reservation(id: string): Reservation {
-    const found = this.state.reservations.find((r) => r.id === id);
-    if (!found) throw new HubError("not_found", `reservation ${id} not found`);
+  private request(id: string): ServiceRequest {
+    const found = this.state.requests.find((r) => r.id === id);
+    if (!found) throw new HubError("not_found", `request ${id} not found`);
     return found;
-  }
-
-  private session(id: string): ChargingSession {
-    const found = this.state.sessions.find((s) => s.id === id);
-    if (!found) throw new HubError("not_found", `session ${id} not found`);
-    return found;
-  }
-
-  private activeSession(id: string): ChargingSession {
-    const session = this.session(id);
-    if (session.status !== "active") throw new HubError("conflict", "session is already completed");
-    return session;
-  }
-
-  private bay(id: string): ServiceBay {
-    const found = this.state.bays.find((b) => b.id === id);
-    if (!found) throw new HubError("not_found", `bay ${id} not found`);
-    return found;
-  }
-
-  private appointment(id: string): CareAppointment {
-    const found = this.state.appointments.find((a) => a.id === id);
-    if (!found) throw new HubError("not_found", `appointment ${id} not found`);
-    return found;
-  }
-
-  private activeSessionOn(connectorId: string): ChargingSession | undefined {
-    return this.state.sessions.find((s) => s.connectorId === connectorId && s.status === "active");
-  }
-
-  private bookedReservationsOn(connectorId: string): Reservation[] {
-    return this.state.reservations.filter((r) => r.connectorId === connectorId && r.status === "booked");
-  }
-
-  private bayIsFree(bayId: string, start: number, end: number): boolean {
-    return !this.state.appointments.some(
-      (a) =>
-        a.bayId === bayId &&
-        (a.status === "booked" || a.status === "in_progress") &&
-        overlaps(start, end, toMs(a.start), toMs(a.end)),
-    );
-  }
-
-  private assertCompatible(vehicle: Vehicle, connector: Connector): void {
-    if (vehicle.connectorTypes.length > 0 && !vehicle.connectorTypes.includes(connector.type)) {
-      throw new HubError(
-        "invalid",
-        `vehicle accepts ${vehicle.connectorTypes.join("/")} but connector is ${connector.type}`,
-      );
-    }
-  }
-
-  private transitionAppointment(
-    id: string,
-    from: CareAppointment["status"],
-    to: CareAppointment["status"],
-  ): CareAppointment {
-    const appointment = this.appointment(id);
-    if (appointment.status !== from) {
-      throw new HubError("conflict", `appointment is ${appointment.status}; expected ${from}`);
-    }
-    appointment.status = to;
-    return structuredClone(appointment);
   }
 }

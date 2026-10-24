@@ -33,13 +33,16 @@ export class JsonFileRepository implements HubRepository {
     if (!existsSync(this.path)) return emptyState();
     const raw = await readFile(this.path, "utf8");
     if (!raw.trim()) return emptyState();
-    const parsed = JSON.parse(raw) as Partial<Record<keyof HubState, unknown>>;
+    const parsed = JSON.parse(raw) as Partial<HubState>;
     const state = emptyState();
-    for (const key of Object.keys(state) as Array<keyof HubState>) {
-      const value = parsed[key];
-      if (Array.isArray(value)) (state[key] as unknown[]) = value;
-    }
-    return state;
+    return {
+      settings: { ...state.settings, ...(parsed.settings ?? {}) },
+      customers: Array.isArray(parsed.customers) ? parsed.customers : [],
+      vehicles: Array.isArray(parsed.vehicles) ? parsed.vehicles : [],
+      providers: Array.isArray(parsed.providers) ? parsed.providers : [],
+      catalog: Array.isArray(parsed.catalog) ? parsed.catalog : [],
+      requests: Array.isArray(parsed.requests) ? parsed.requests : [],
+    };
   }
 
   async save(state: HubState): Promise<void> {
