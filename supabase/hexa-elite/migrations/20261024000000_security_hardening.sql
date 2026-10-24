@@ -902,8 +902,22 @@ create policy admin_manage_earnings_upd on public.earnings
 create policy admin_manage_earnings_del on public.earnings
   for delete to authenticated using ((select public.is_admin_user()));
 
--- 8. Contact email moves to the parent company's shared inbox -----------------
+-- 8. Contact and admin emails move to the parent company's domain ------------
 update public.platform_settings
-set value = jsonb_build_object('value', 'accounts@hexatech.app'),
+set value = jsonb_build_object('value', 'admin@hexatech.app'),
     updated_at = now()
 where key = 'support_email';
+
+-- The admin login moves from admin@hexaelite.app to admin@hexatech.app.
+-- Its password is unchanged; use "Forgot password" to set a new one.
+update auth.users
+set email = 'admin@hexatech.app',
+    raw_user_meta_data = coalesce(raw_user_meta_data, '{}'::jsonb)
+                         || jsonb_build_object('email', 'admin@hexatech.app'),
+    updated_at = now()
+where lower(email) = 'admin@hexaelite.app'
+  and not exists (select 1 from auth.users where lower(email) = 'admin@hexatech.app');
+
+update public.user_profiles
+set email = 'admin@hexatech.app', updated_at = now()
+where lower(email) = 'admin@hexaelite.app';
