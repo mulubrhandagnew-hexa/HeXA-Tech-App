@@ -1,5 +1,7 @@
 # HeXA Books
 
+> This repo also contains **[Tigtog](tigtog/README.md)**, a short-video social app, in `tigtog/`.
+
 Double-entry bookkeeping and tax engine for the HeXA platform.
 
 HeXA Books is a standalone TypeScript service that keeps a correct general
