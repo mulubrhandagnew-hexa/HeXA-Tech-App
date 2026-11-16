@@ -87,6 +87,31 @@ the fixed −53¢ scoop replaced by a slight, varied flat start; softer bow
 attack; nasal formant follows the pitch. Settings: `WATA` in
 `public/music.js`.
 
+## The ከበሮ (correction)
+
+A listener reported that the studio's ጓይላ "sounded like Indian beats, not
+Tigrinya". The timing checks above had passed, because they measure *when*
+hits happen, not *what each hit sounds like*. Measuring individual drum hits
+showed why:
+
+| Low drum hit | Real kebero (wedding / Gebrehiwet) | Old synth | New synth |
+|---|---|---|---|
+| Pitch slide, first 145 ms (median, same resonance) | −126¢ / +44¢, varies both ways | **+267¢ downward on every hit** (150 → 52 Hz sweep) | varies both ways (±3% per hit) |
+| Decay of an isolated hit | ≈ −90 to −190 dB/s | −207 dB/s | −124 dB/s |
+
+A large, identical downward pitch slide on every stroke is characteristic of
+tabla bass strokes. Together with a root–fifth bass drone (tanpura-like),
+it gave the "Indian" sound. Fixes:
+
+- ከበሮ rebuilt from fixed-pitch drum-head modes (≈92/168/262 Hz big head,
+  330/518 Hz small head) plus hand-on-skin noise, varied slightly per hit.
+- No bass in traditional ጓይላ (`bass: false`); the bass guitar remains only in
+  the modern Guayla.
+
+Measurements can rule out wrong sounds but cannot confirm that something
+sounds Tigrinya; that needs native listeners. Real ከበሮ and krar recordings
+from Tigrinya musicians would be better than any synthesis.
+
 ## Limits
 
 - Scale detection on full mixes is weak. Five of six lean to the Tizita-major

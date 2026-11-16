@@ -35,7 +35,7 @@ export const RHYTHMS = {
     clap: { 0: 0.6, 6: 0.75 },
   },
   guaylaWedding: {
-    stepsPerBar: 12, stepsPerBeat: 6, bpm: 88,
+    stepsPerBar: 12, stepsPerBeat: 6, bpm: 88, bass: false,
     low: { 0: 0.85, 6: 1, 10: 0.25 },
     high: [],
     shaker: [],
@@ -264,8 +264,9 @@ export class MusicEngine {
 
     // Bass: root on the downbeat, fifth on the second beat.
     if (this.drumsOnly) return;
-    if (inBar === 0) this._bass(this.root - 24, time, this.stepDur * r.stepsPerBeat * 0.9);
-    if (inBar === r.stepsPerBar / 2) this._bass(this.root - 17, time, this.stepDur * r.stepsPerBeat * 0.8);
+    // Bass guitar only in rhythms that use it (modern); traditional ጓይላ has none.
+    if (r.bass !== false && inBar === 0) this._bass(this.root - 24, time, this.stepDur * r.stepsPerBeat * 0.9);
+    if (r.bass !== false && inBar === r.stepsPerBar / 2) this._bass(this.root - 17, time, this.stepDur * r.stepsPerBeat * 0.8);
 
     if (loopStep % 2 === 0) {
       const col = loopStep / 2;
@@ -442,20 +443,41 @@ export class MusicEngine {
     this._osc("triangle", this.hz(midi + 12), time, time + dur + 0.2, g2);
   }
 
+  /**
+   * ከበሮ (kebero), the large two-headed hand drum. Measured against real
+   * kebero hits (docs/reference-analysis.md): no consistent pitch slide (a
+   * fixed downward slide is what made the old synth sound like a tabla), and
+   * a longer ring (~-90 to -140 dB/s). Built from fixed-pitch drum-head modes
+   * plus the sound of the hand on the skin, varied slightly per hit like a
+   * player's hand.
+   */
+  _drumHit(time, vel, modes, skin) {
+    const ctx = this.ctx;
+    const jitter = () => 1 + (Math.random() * 2 - 1) * 0.03;
+    for (const [freq, level, decay] of modes) {
+      const g = ctx.createGain();
+      const peak = level * vel * jitter();
+      g.gain.setValueAtTime(0.0001, time);
+      g.gain.exponentialRampToValueAtTime(peak, time + 0.003);
+      g.gain.exponentialRampToValueAtTime(0.0001, time + decay);
+      g.connect(this.master);
+      // Fixed pitch: a real drum head barely moves (< 1/10 semitone here).
+      const o = this._osc("sine", freq * jitter(), time, time + decay + 0.02, g);
+      o.frequency.setTargetAtTime(freq * 0.995, time, 0.05);
+    }
+    const [lo, hi, level, dur] = skin;
+    const bp = this._noiseBurst(time, dur, level * vel * jitter(), "bandpass", Math.sqrt(lo * hi), Math.sqrt(lo * hi) / (hi - lo));
+    bp.connect(this.master);
+  }
+
   _lowKebero(time, vel = 1) {
-    const g = this._env(time, 0.002, 0.9 * vel, 0.38);
-    g.connect(this.master);
-    const o = this._osc("sine", 150, time, time + 0.45, g);
-    o.frequency.exponentialRampToValueAtTime(52, time + 0.3);
-    this._noiseBurst(time, 0.02, 0.25, "lowpass", 1200, 0.7).connect(this.master);
+    // Big head, open stroke: body mode + head modes (inharmonic, like a membrane).
+    this._drumHit(time, vel, [[92, 0.75, 0.62], [168, 0.35, 0.5], [262, 0.12, 0.3]], [180, 900, 0.22, 0.05]);
   }
 
   _highKebero(time, vel = 1) {
-    const g = this._env(time, 0.002, 0.45 * vel, 0.13);
-    g.connect(this.master);
-    const o = this._osc("sine", 320, time, time + 0.16, g);
-    o.frequency.exponentialRampToValueAtTime(190, time + 0.1);
-    this._noiseBurst(time, 0.03, 0.22, "bandpass", 2500, 1.2).connect(this.master);
+    // Small head, hand slap: higher modes, shorter, more skin.
+    this._drumHit(time, vel, [[330, 0.28, 0.32], [518, 0.12, 0.22]], [700, 3000, 0.3, 0.035]);
   }
 
   _shaker(time, level) {
