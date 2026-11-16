@@ -108,6 +108,12 @@ it gave the "Indian" sound. Fixes:
 - No bass in traditional ጓይላ (`bass: false`); the bass guitar remains only in
   the modern Guayla.
 
+Listen: [old drums](listening/tigtog_guayla_bahlawi_before_drums.mp3) ·
+[new drums](listening/tigtog_guayla_bahlawi_after_drums.mp3) ·
+[old with krar](listening/tigtog_guayla_bahlawi_before_full.mp3) ·
+[new with krar](listening/tigtog_guayla_bahlawi_after_full.mp3)
+(16 s each, Tigtog's own synthesized output).
+
 Measurements can rule out wrong sounds but cannot confirm that something
 sounds Tigrinya; that needs native listeners. Real ከበሮ and krar recordings
 from Tigrinya musicians would be better than any synthesis.
