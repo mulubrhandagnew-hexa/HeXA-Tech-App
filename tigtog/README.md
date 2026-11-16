@@ -14,6 +14,8 @@ Make and share **music and videos in Tigrinya (ትግርኛ) and Amharic (አማ
   ጓይላ መርዓ (wedding, 88 BPM), measured from reference recordings, plus a key
   selector and ±50¢ fine-tune so the beat can match a singer or krar that
   isn't at A440. See [docs/reference-analysis.md](docs/reference-analysis.md).
+- **A ጭራ-ዋጣ (wata) with measured ornaments:** slow, varied vibrato and the
+  register of a Tigrinya bowed lead.
 - **A krar modelled on a real one:** a physically modelled plucked string
   whose overtones, decay and range were matched to isolated notes from a
   krar recording.
@@ -85,6 +87,7 @@ src/
   index.ts               bootstrap
 tools/analyze_reference.py  measure tempo, tuning, qenet and beat patterns of songs
 tools/analyze_timbre.py     measure a plucked instrument's harmonics and decay
+tools/analyze_ornaments.py  measure vibrato, scoops and range of a melodic line
 docs/reference-analysis.md  findings used to tune the rhythms
 public/
   app.js                 feed, profiles, upload, comments, routing

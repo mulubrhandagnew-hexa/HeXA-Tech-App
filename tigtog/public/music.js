@@ -64,9 +64,11 @@ export function rowToMidi(scale, row, root = rootFor("A")) {
 /**
  * Octave each melody voice sounds in, relative to the grid's notes.
  * The krar is measured at 119-357 Hz in reference recordings (about B2-F4),
- * so its grid (root F3-E4 + two octaves) is played an octave down.
+ * so its grid (root F3-E4 + two octaves) is played an octave down. The
+ * bowed lead measured in a Tigrinya intro sits in the same register
+ * (117-350 Hz), so ጭራ-ዋጣ is too.
  */
-const OCTAVE = { krar: -12, masinko: 12, washint: 12, embilta: 12 };
+const OCTAVE = { krar: -12, masinko: -12, washint: 12, embilta: 12 };
 
 /**
  * Krar model, calibrated on isolated notes from a krar recording:
@@ -123,6 +125,9 @@ export function renderKrar(freq, sampleRate, opts = KRAR, rand = Math.random) {
   if (peak > 0) for (let i = 0; i < len; i++) out[i] /= peak;
   return out;
 }
+
+/** Bowed wata ornaments, measured from a Tigrinya intro lead (median values). */
+export const WATA = { attack: 0.15, vibratoHz: 3.9, vibratoCents: 60, startCents: 6, scoopCents: -10 };
 
 /** Velocity of a drum pattern at a step (0 = no hit). */
 const hit = (pattern, step) =>
@@ -342,20 +347,26 @@ export class MusicEngine {
       g.gain.exponentialRampToValueAtTime(0.0001, time + Math.max(dur, 0.25) + 0.9);
       src.stop(time + Math.max(dur, 0.25) + 0.95);
     } else if (this.instrument === "masinko") {
-      // Bowed one-string fiddle: slow attack, nasal band, wide vibrato.
+      // Bowed one-string fiddle (ጭራ-ዋጣ / ማሲንቆ). Ornament style measured
+      // from a Tigrinya intro lead (docs/reference-analysis.md): soft ~0.15 s
+      // bow attack, slow vibrato ~4 Hz whose depth varies per note (median
+      // ~16 cents peak-to-peak, some notes nearly straight), no fixed scoop.
       const end = time + dur;
-      const g = this._env(time, 0.06, 0.22, 0.12, end);
+      const g = this._env(time, WATA.attack, 0.24, 0.12, end);
       const bp = ctx.createBiquadFilter();
       bp.type = "bandpass";
-      bp.frequency.value = 1400;
+      bp.frequency.value = Math.min(2400, f * 5); // nasal formant tracks pitch
       bp.Q.value = 0.9;
       bp.connect(g);
       g.connect(out);
-      const o = this._osc("sawtooth", f, time, end + 0.15, bp);
-      this._vibrato(o, time, end + 0.15, 6, f * 0.012);
-      // Slight scoop into the note.
-      o.frequency.setValueAtTime(f * 0.97, time);
-      o.frequency.exponentialRampToValueAtTime(f, time + 0.08);
+      // Starts a few cents flat with a little random spread, then settles (bow placement).
+      const start = f * Math.pow(2, (WATA.scoopCents + (Math.random() * 2 - 1) * WATA.startCents) / 1200);
+      const o = this._osc("sawtooth", start, time, end + 0.15, bp);
+      o.frequency.exponentialRampToValueAtTime(f, time + 0.06);
+      const rate = WATA.vibratoHz * (0.6 + Math.random() * 0.9);
+      const ppCents = WATA.vibratoCents * Math.pow(Math.random() * 2, 1.4); // skewed: many shallow, some deep
+      // _vibrato's depth is in Hz (± around f): ±(pp/2) cents.
+      this._vibrato(o, time, end + 0.15, rate, f * (Math.pow(2, ppCents / 2 / 1200) - 1));
     } else if (this.instrument === "embilta") {
       // Embilta (እምብልታ): end-blown horn. Brassy swell, the filter opens
       // as the note blooms, slight pitch rise at the start.

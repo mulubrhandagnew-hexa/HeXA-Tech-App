@@ -1,6 +1,6 @@
 # Reference analysis: Tigrinya songs
 
-To make the studio's ጓይላ sound like real Tigrinya music, eight reference
+To make the studio's ጓይላ sound like real Tigrinya music, nine reference
 recordings were analysed with `tools/analyze_reference.py`. Only measurements
 were kept. **No audio from these recordings is stored in the repo or used as
 sound in the app.**
@@ -15,10 +15,13 @@ sound in the app.**
 | Tekle Kiflemariam (Wedi Tukul) – Adey | 76 | continuous strum | −40¢ | Ambassel / Tizita minor |
 | Simon Mehari – krar music | 118 | duple | +27¢ | **Tizita major on C#** (77% in-scale) |
 | Gebretsadik Weldeyohans – Tsbekti eya | 94 | triplet | +31¢ | **Tizita major on F** (81% in-scale) |
+| Solomon Yikunoamlak – Koleu Tigray | 76 | triplet, kebero on both beats | +4¢ | **Tizita major on C#** (83% in-scale; best of all 792 five-note sets) |
 
-The two cleaner recordings give a firm result: **Tizita major** (F G A C D;
-C# D# F G# A#). With the earlier leans, 7 of 8 songs fit the Tizita-major
-set best. 6 of 8 are tuned 27–46¢ away from A440.
+The cleaner recordings give a firm result: **Tizita major** (F G A C D;
+C# D# F G# A#). With the earlier leans, 8 of 9 songs fit the Tizita-major
+set best. In Koleu Tigray an A (between G# and A#) recurs at ~6% through the
+whole song, which looks like an ornamental or passing note rather than
+a different qenet. 6 of 9 songs are tuned 27–46¢ away from A440.
 
 ## Beat patterns (onset strength, two beats, each split in three)
 
@@ -64,9 +67,29 @@ octave lower than before to match the krar's range. The averaged spectrum is
 within 1.3 dB of the recording (single renders 1.1–3.8 dB, since each pluck
 is randomised).
 
+## The bowed lead (ጭራ-ዋጣ)
+
+Measured with  on the sustained, ornamented lead
+in the intro of *Koleu Tigray* (0:15–0:58, 44 notes, before the vocal). From
+the numbers alone it can't be told whether this is a wata or a keyboard
+played in wata style; either way it is a Tigrinya melodic line.
+
+| (25th / median / 75th percentile) | Intro lead | Tigtog, old | Tigtog, calibrated |
+|---|---|---|---|
+| Pitch range | 117–350 Hz | 490–1093 Hz | 120–362 Hz |
+| Vibrato rate | 2.2 / 3.9 / 5.9 Hz | 5.7 Hz, every note | 2.8–3.1 / 3.6–4.2 / 4.9–5.0 Hz |
+| Vibrato depth (measured, cents p-p) | 2 / 16 / 39 | 20 / 20 / 25 | 10–13 / 20 / 30–39 |
+| Scoop into note | −15 / 0 / +11¢ | −20 / −13 / −10¢ | −4–0 / 0 / +5–10¢ |
+
+Changes: played two octaves lower; vibrato ~4 Hz with rate and depth
+randomised per note (many shallow, some deep) instead of a fixed 6 Hz;
+the fixed −53¢ scoop replaced by a slight, varied flat start; softer bow
+attack; nasal formant follows the pitch. Settings:  in
+.
+
 ## Limits
 
 - Scale detection on full mixes is weak. Five of six lean to the Tizita-major
   pitch set, but this is a hint, not a transcription.
-- Eight songs is a small sample. Running the tool on more ጓይላ (and on
+- Nine songs is a small sample. Running the tool on more ጓይላ (and on
   Amharic music for እስክስታ and ችክችካ) would make the patterns more reliable.
