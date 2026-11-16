@@ -273,6 +273,23 @@ export class MusicEngine {
     }
   }
 
+  /**
+   * Play a one-shot guide for a singer: a count-in on the hand drum, then
+   * each note at its exact pitch on `instrument` (sustained ጭራ-ዋጣ by default).
+   * @param {{midi: number, start: number, dur: number}[]} notes start/dur in s
+   * @returns {number} AudioContext time of the first note
+   */
+  playGuide(notes, { bpm, at, countIn = 4, instrument = "masinko" }) {
+    const beat = 60 / bpm;
+    for (let i = 0; i < countIn; i++) this._highKebero(at + i * beat, i === 0 ? 1 : 0.6);
+    const first = at + countIn * beat;
+    const prev = this.instrument;
+    this.instrument = instrument;
+    for (const n of notes) this._melody(n.midi - OCTAVE[instrument], first + n.start, n.dur);
+    this.instrument = prev;
+    return first;
+  }
+
   // ------------------------------------------------------------ voices
   /** Krar notes are rendered once per pitch and cached. */
   _krarBuffer(freq) {

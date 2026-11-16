@@ -49,7 +49,11 @@ export interface FeedOptions {
 const likeKey = (postId: string, userId: string) => `${postId}:${userId}`;
 const followKey = (followerId: string, followeeId: string) => `${followerId}:${followeeId}`;
 
+import { VoiceStore } from "./voice.js";
+
 export class Tigtog {
+  /** Consented singing recordings for training Tigtog's voice model. */
+  readonly voice = new VoiceStore();
   private users = new Map<string, User>();
   private usernames = new Map<string, string>(); // username -> id
   private sessions = new Map<string, Session>(); // tokenHash -> session
@@ -72,6 +76,7 @@ export class Tigtog {
     for (const l of state.likes) t.likes.set(likeKey(l.postId, l.userId), l);
     for (const c of state.comments) t.comments.set(c.id, c);
     for (const f of state.follows) t.follows.set(followKey(f.followerId, f.followeeId), f);
+    t.voice.load(state.voiceConsents ?? [], state.voiceAudio ?? [], state.voiceSamples ?? []);
     return t;
   }
 
@@ -84,6 +89,9 @@ export class Tigtog {
     s.likes = [...this.likes.values()];
     s.comments = [...this.comments.values()];
     s.follows = [...this.follows.values()];
+    s.voiceConsents = [...this.voice.consents.values()];
+    s.voiceAudio = [...this.voice.audio.values()];
+    s.voiceSamples = [...this.voice.samples.values()];
     return structuredClone(s);
   }
 

@@ -68,6 +68,53 @@ export interface Follow {
   createdAt: string;
 }
 
+// ------------------------------------------------------------ voice dataset
+
+/** Bump when the consent text changes; older consents must be renewed. */
+export const VOICE_CONSENT_VERSION = 1;
+
+/** A singer's explicit agreement to have their recordings used for training. */
+export interface VoiceConsent {
+  userId: string;
+  version: number;
+  givenAt: string;
+}
+
+/** A private audio file uploaded for the voice dataset (never served publicly). */
+export interface VoiceAudio {
+  id: string;
+  ownerId: string;
+  fileName: string;
+  contentType: string;
+  size: number;
+  createdAt: string;
+}
+
+/** One guide note the singer followed, timed from the start of the audio. */
+export interface VoiceNote {
+  syllable: string;
+  midi: number;
+  start: number; // seconds
+  dur: number; // seconds
+}
+
+export interface VoiceSample {
+  id: string;
+  userId: string;
+  audioId: string;
+  promptId: string;
+  kind: "sweep" | "line";
+  language: "ti" | "am";
+  text: string;
+  phonemes: string; // from public/g2p.js, words separated by " | "
+  notes: VoiceNote[];
+  bpm: number;
+  cents: number; // tuning offset of the guide from A440
+  durationSec: number;
+  consentVersion: number;
+  createdAt: string;
+}
+
 export interface TigtogState {
   users: User[];
   sessions: Session[];
@@ -76,10 +123,16 @@ export interface TigtogState {
   likes: Like[];
   comments: Comment[];
   follows: Follow[];
+  voiceConsents: VoiceConsent[];
+  voiceAudio: VoiceAudio[];
+  voiceSamples: VoiceSample[];
 }
 
 export function emptyState(): TigtogState {
-  return { users: [], sessions: [], media: [], posts: [], likes: [], comments: [], follows: [] };
+  return {
+    users: [], sessions: [], media: [], posts: [], likes: [], comments: [], follows: [],
+    voiceConsents: [], voiceAudio: [], voiceSamples: [],
+  };
 }
 
 /** Public view of a user — never exposes the password hash. */

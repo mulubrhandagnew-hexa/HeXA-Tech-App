@@ -3,6 +3,7 @@
 import { t, getLang, setLang, translateDom, UI_LANGS } from "./i18n.js";
 import { attachFidelInput } from "./fidel.js";
 import { renderStudio } from "./studio.js";
+import { renderVoice } from "./voice.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const view = $("#view");
@@ -505,6 +506,9 @@ async function route() {
           el("button", { class: "primary", onclick: () => requireLogin(route) }, t("login"))));
       }
       return renderFeed("/api/feed/following", () => empty(t("followingEmptyTitle"), t("followingEmptyText")));
+    case "voice":
+      cleanup = renderVoice(view, { api, store, el, toast, requireLogin });
+      return;
     case "studio":
       cleanup = renderStudio(view, {
         api, store, el, toast, requireLogin, fidelField,

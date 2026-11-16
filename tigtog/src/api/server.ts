@@ -9,10 +9,10 @@
 import express, { type Express, type Request, type Response, type NextFunction } from "express";
 import { z, ZodError } from "zod";
 import { mkdir, writeFile, unlink } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve, relative, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Tigtog } from "../service/tigtog.js";
-import { LANGUAGES, TigtogError } from "../domain/types.js";
+import { LANGUAGES, TigtogError, VOICE_CONSENT_VERSION } from "../domain/types.js";
 import { newId } from "../domain/auth.js";
 import { type TigtogRepository, InMemoryRepository } from "../persistence/repository.js";
 
@@ -51,11 +51,59 @@ const postSchema = z.object({
 });
 const commentSchema = z.object({ text: z.string().min(1).max(300) });
 
+// ---------------------------------------------------------- voice dataset
+export const VOICE_AUDIO_TYPES: Record<string, string> = {
+  "audio/webm": "webm",
+  "audio/ogg": "ogg",
+  "audio/mp4": "m4a",
+  "audio/wav": "wav",
+  "audio/x-wav": "wav",
+};
+
+/** Check the audio file's own signature, not just its Content-Type. */
+export function looksLikeAudio(buf: Buffer, contentType: string): boolean {
+  if (buf.length < 12) return false;
+  const ascii = (a: number, b: number) => buf.subarray(a, b).toString("latin1");
+  switch (contentType) {
+    case "audio/webm": return buf[0] === 0x1a && buf[1] === 0x45 && buf[2] === 0xdf && buf[3] === 0xa3;
+    case "audio/ogg": return ascii(0, 4) === "OggS";
+    case "audio/mp4": return ascii(4, 8) === "ftyp";
+    default: return ascii(0, 4) === "RIFF" && ascii(8, 12) === "WAVE";
+  }
+}
+
+const consentSchema = z.object({
+  version: z.number().int(),
+  adult: z.literal(true),
+  ownVoice: z.literal(true),
+  agree: z.literal(true),
+});
+const voiceNoteSchema = z.object({
+  syllable: z.string().min(1).max(4),
+  midi: z.number().min(24).max(96),
+  start: z.number().min(0).max(120),
+  dur: z.number().positive().max(10),
+});
+const voiceSampleSchema = z.object({
+  audioId: z.string().min(1),
+  promptId: z.string().min(1).max(40),
+  kind: z.enum(["sweep", "line"]),
+  language: z.enum(["ti", "am"]),
+  text: z.string().min(1).max(300),
+  phonemes: z.string().min(1).max(2000),
+  notes: z.array(voiceNoteSchema).min(1).max(200),
+  bpm: z.number().min(30).max(240),
+  cents: z.number().min(-50).max(50),
+  durationSec: z.number().min(0.5).max(120),
+});
+
 export interface ServerOptions {
   tigtog: Tigtog;
   repository?: TigtogRepository;
   /** Directory where uploaded media files are stored. */
   mediaDir: string;
+  /** Private directory for voice-dataset recordings (never served). */
+  voiceDir?: string;
   /** Max upload size in bytes (default 50 MB). */
   maxUploadBytes?: number;
   /** Serve the bundled web client (default true). */
@@ -73,6 +121,12 @@ const PUBLIC_DIR = fileURLToPath(new URL("../../public", import.meta.url));
 
 export function createServer(opts: ServerOptions): Express {
   const { tigtog, mediaDir } = opts;
+  const voiceDir = resolve(opts.voiceDir ?? join(mediaDir, "..", "voice"));
+  // Voice recordings are private: refuse a voice directory inside the public media one.
+  const rel = relative(resolve(mediaDir), voiceDir);
+  if (rel === "" || (!rel.startsWith("..") && !isAbsolute(rel))) {
+    throw new Error("voiceDir must not be inside mediaDir (media is served publicly)");
+  }
   const repository = opts.repository ?? new InMemoryRepository();
   const maxUpload = opts.maxUploadBytes ?? 50 * 1024 * 1024;
   const app = express();
@@ -313,6 +367,81 @@ export function createServer(opts: ServerOptions): Express {
       const user = tigtog.unfollow(me(req), req.params.username!);
       await persist();
       res.json({ user, followedByMe: false });
+    }),
+  );
+
+  // ------------------------------------------------------- voice dataset
+  app.get("/api/voice/stats", (_req, res) => res.json({ stats: tigtog.voice.stats() }));
+
+  app.get("/api/voice/consent", requireAuth, (req, res) => {
+    res.json({ consent: tigtog.voice.getConsent(me(req)) ?? null, currentVersion: VOICE_CONSENT_VERSION });
+  });
+  app.post(
+    "/api/voice/consent",
+    requireAuth,
+    wrap(async (req, res) => {
+      const { version } = consentSchema.parse(req.body);
+      const consent = tigtog.voice.giveConsent(me(req), version);
+      await persist();
+      res.status(201).json({ consent });
+    }),
+  );
+  app.delete(
+    "/api/voice/consent",
+    requireAuth,
+    wrap(async (req, res) => {
+      const files = tigtog.voice.withdraw(me(req));
+      await persist();
+      await Promise.all(files.map((f) => unlink(join(voiceDir, f.fileName)).catch(() => {})));
+      res.status(204).end();
+    }),
+  );
+
+  app.post(
+    "/api/voice/audio",
+    requireAuth,
+    express.raw({ type: Object.keys(VOICE_AUDIO_TYPES), limit: 20 * 1024 * 1024 }),
+    wrap(async (req, res) => {
+      const contentType = (req.header("content-type") ?? "").split(";")[0]!.trim().toLowerCase();
+      const ext = VOICE_AUDIO_TYPES[contentType];
+      if (!ext) throw new TigtogError(400, "unsupported_media", "upload WebM, Ogg, MP4 or WAV audio");
+      const body = req.body as unknown;
+      if (!Buffer.isBuffer(body) || !looksLikeAudio(body, contentType)) {
+        throw new TigtogError(400, "unsupported_media", "file is not valid " + ext + " audio");
+      }
+      if (!tigtog.voice.hasCurrentConsent(me(req))) {
+        throw new TigtogError(403, "consent_required", "accept the voice consent before recording");
+      }
+      const id = newId();
+      const fileName = `${id}.${ext}`;
+      await mkdir(voiceDir, { recursive: true });
+      await writeFile(join(voiceDir, fileName), body);
+      const audio = tigtog.voice.registerAudio({ id, ownerId: me(req), fileName, contentType, size: body.length });
+      await persist();
+      res.status(201).json({ audio: { id: audio.id, size: audio.size } });
+    }),
+  );
+
+  app.post(
+    "/api/voice/samples",
+    requireAuth,
+    wrap(async (req, res) => {
+      const sample = tigtog.voice.addSample(me(req), voiceSampleSchema.parse(req.body));
+      await persist();
+      res.status(201).json({ sample });
+    }),
+  );
+  app.get("/api/voice/samples", requireAuth, (req, res) => {
+    res.json({ samples: tigtog.voice.listSamples(me(req)) });
+  });
+  app.delete(
+    "/api/voice/samples/:id",
+    requireAuth,
+    wrap(async (req, res) => {
+      const audio = tigtog.voice.deleteSample(me(req), req.params.id!);
+      await persist();
+      if (audio) await unlink(join(voiceDir, audio.fileName)).catch(() => {});
+      res.status(204).end();
     }),
   );
 

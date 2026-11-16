@@ -281,3 +281,18 @@ a.primary, a.secondary { display: inline-block; }
   .studio-preview { position: static; max-width: 300px; margin: 0 auto; width: 100%; }
 }
 body:not(.on-feed) .topbar { background: var(--bg); border-bottom: 1px solid var(--surface-2); }
+
+/* ---------- voice dataset ---------- */
+.voice { max-width: 760px; }
+.voice .card { margin-bottom: 16px; }
+.consent-points { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+.prompt-text { font-size: 38px; font-weight: 700; line-height: 1.5; margin: 8px 0; display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.prompt-text.line { font-size: 30px; gap: 2px 6px; }
+.syl { padding: 0 4px; border-radius: 8px; transition: background .08s, color .08s; }
+.syl.now { background: var(--accent); color: var(--accent-ink); }
+.phonemes { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; color: var(--muted); margin: 0; word-break: break-word; }
+.recordings { list-style: none; margin: 0; padding: 0; max-height: 260px; overflow-y: auto; }
+.recordings li { display: flex; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--surface-2); }
+.recordings .del { margin-left: auto; background: none; border: 0; color: var(--muted); font-size: 12px; }
+.link.danger { color: var(--like); align-self: flex-start; }
+.prompt-card audio { width: 100%; }

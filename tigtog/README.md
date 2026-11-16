@@ -19,6 +19,10 @@ Make and share **music and videos in Tigrinya (ትግርኛ) and Amharic (አማ
 - **A krar modelled on a real one:** a physically modelled plucked string
   whose overtones, decay and range were matched to isolated notes from a
   krar recording.
+- **Teach Tigtog to sing:** singers (with explicit, revocable consent) record
+  guided ሀ ሁ ሂ prompts and lines; each recording is saved privately with its
+  phonemes and exact notes, ready to train Tigtog's own ትግርኛ/አማርኛ singing
+  voice. See [docs/voice-model-plan.md](docs/voice-model-plan.md).
 - **Fidel typing** everywhere: type Latin, get Ge'ez (`selam` → ሰላም,
   `Ab` → ኣብ, `` `amet `` → ዓመት, `::` → ።). No special keyboard needed.
 - **Interface in ትግርኛ, አማርኛ and English.** Posts are tagged by language, and
@@ -36,7 +40,7 @@ stored on disk.
 ```bash
 cd tigtog
 npm install
-npm test          # 34 tests: service, HTTP API, Fidel keymap
+npm test          # 50 tests: service, HTTP API, Fidel keymap
 npm run dev       # http://localhost:3001 with live reload
 # or
 npm run build && npm start
@@ -47,6 +51,7 @@ npm run build && npm start
 | `PORT` | `3001` | HTTP port |
 | `TIGTOG_DB_PATH` | `./data/tigtog.json` | JSON snapshot of all records |
 | `TIGTOG_MEDIA_DIR` | `./data/media` | Uploaded video files |
+| `TIGTOG_VOICE_DIR` | `./data/voice` | Private voice-dataset recordings (never served) |
 | `TIGTOG_MAX_UPLOAD_MB` | `50` | Max upload size |
 
 ## Fidel keymap
@@ -88,6 +93,7 @@ src/
 tools/analyze_reference.py  measure tempo, tuning, qenet and beat patterns of songs
 tools/analyze_timbre.py     measure a plucked instrument's harmonics and decay
 tools/analyze_ornaments.py  measure vibrato, scoops and range of a melodic line
+tools/export-voice-dataset.mjs  export consented recordings as a training set
 docs/reference-analysis.md  findings used to tune the rhythms
 public/
   app.js                 feed, profiles, upload, comments, routing
