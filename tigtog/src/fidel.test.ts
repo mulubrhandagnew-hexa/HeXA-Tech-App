@@ -94,11 +94,15 @@ describe("krar string model", () => {
         }
         expect(nonFinite, `non-finite samples at midi ${midi}, ${sr} Hz`).toBe(0);
         expect(peak).toBeCloseTo(1, 5);
-        // Still ringing after a second, quieter than the start.
+        // Still ringing after a second, but decaying: relative to the note's
+        // own start. Calibrated decay is ~-22 dB/s in the krar's range and
+        // faster for high notes (worst measured -34 dB at 523 Hz), so require
+        // it to be quieter than the start yet less than 40 dB down.
         const rms = (a: number, b: number) =>
           Math.sqrt(out.subarray(a * sr, b * sr).reduce((s, v) => s + v * v, 0) / ((b - a) * sr));
-        expect(rms(1, 1.1)).toBeGreaterThan(0.005);
-        expect(rms(1, 1.1)).toBeLessThan(rms(0.02, 0.12));
+        const dropDb = 20 * Math.log10(rms(1, 1.1) / rms(0.02, 0.12));
+        expect(dropDb, `midi ${midi} at ${sr} Hz`).toBeLessThan(0);
+        expect(dropDb, `midi ${midi} at ${sr} Hz`).toBeGreaterThan(-40);
       }
     }
   });
