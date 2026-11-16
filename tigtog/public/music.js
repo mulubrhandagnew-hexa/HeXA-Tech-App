@@ -15,10 +15,29 @@ export const SCALES = {
 /**
  * Rhythms. A bar has `stepsPerBar` sixteenth-ish steps; `bpm` counts beats of
  * `stepsPerBeat` steps (a dotted quarter in 6/8, a quarter in 4/4).
- * Drum patterns list the steps (within one bar) where each sound hits.
+ * Drum patterns list the steps (within one bar) where each sound hits, either
+ * as an array (full velocity) or as {step: velocity}.
+ *
+ * The two Guayla patterns were measured from reference recordings (see
+ * docs/reference-analysis.md): ~77-80 BPM with a triplet "bounce" — strong,
+ * medium, gap — on each beat; the traditional wedding Guayla is ~88 BPM with
+ * kebero on each beat, a pickup before the bar, and hand-claps on the beats.
  */
 export const RHYTHMS = {
-  guayla: { stepsPerBar: 12, stepsPerBeat: 6, bpm: 100, low: [0, 6], high: [3, 5, 9, 11], shaker: [0, 2, 4, 6, 8, 10], clap: [3, 9] },
+  guayla: {
+    stepsPerBar: 12, stepsPerBeat: 6, bpm: 80,
+    low: { 0: 1, 6: 1 },
+    high: { 0: 1, 2: 0.55, 6: 1, 8: 0.55 },
+    shaker: { 0: 0.1, 2: 0.05, 4: 0.025, 6: 0.1, 8: 0.05, 10: 0.025 },
+    clap: { 0: 0.6, 6: 0.75 },
+  },
+  guaylaWedding: {
+    stepsPerBar: 12, stepsPerBeat: 6, bpm: 88,
+    low: { 0: 0.85, 6: 1, 10: 0.25 },
+    high: [],
+    shaker: [],
+    clap: { 0: 0.85, 6: 1 },
+  },
   eskista: { stepsPerBar: 12, stepsPerBeat: 6, bpm: 112, low: [0, 7], high: [3, 6, 9, 10], shaker: [0, 2, 4, 6, 8, 10], clap: [6] },
   chikchika: { stepsPerBar: 12, stepsPerBeat: 6, bpm: 126, low: [0, 6], high: [2, 3, 8, 9], shaker: [0, 1, 2, 4, 6, 7, 8, 10], clap: [3, 9] },
   ballad: { stepsPerBar: 16, stepsPerBeat: 4, bpm: 72, low: [0, 10], high: [4, 12], shaker: [0, 2, 4, 6, 8, 10, 12, 14], clap: [] },
@@ -32,13 +51,19 @@ export const ROWS = 10;
 export const BARS_IN_LOOP = 2;
 export const columnsFor = (rhythm) => (RHYTHMS[rhythm].stepsPerBar * BARS_IN_LOOP) / 2;
 
-const ROOT_MIDI = 57; // A3
-const midiToHz = (m) => 440 * Math.pow(2, (m - 69) / 12);
+/** Keys offered in the studio (pitch class of the qenet's root). */
+export const KEYS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+/** MIDI note of the root for a key: kept between F3 and E4. */
+export const rootFor = (key) => 53 + ((KEYS.indexOf(key) - 5 + 12) % 12);
 
-export function rowToMidi(scale, row) {
+export function rowToMidi(scale, row, root = rootFor("A")) {
   const s = SCALES[scale];
-  return ROOT_MIDI + 12 * Math.floor(row / s.length) + s[row % s.length];
+  return root + 12 * Math.floor(row / s.length) + s[row % s.length];
 }
+
+/** Velocity of a drum pattern at a step (0 = no hit). */
+const hit = (pattern, step) =>
+  Array.isArray(pattern) ? (pattern.includes(step) ? 1 : 0) : (pattern[step] ?? 0);
 
 /** A pleasant random melody: a stepwise walk that lands on the root at the end. */
 export function generateMelody(rhythm, rand = Math.random) {
@@ -66,6 +91,9 @@ export class MusicEngine {
     this.scale = "tizitaMajor";
     this.rhythm = "guayla";
     this.instrument = "krar";
+    this.key = "A";
+    /** Fine tuning in cents: krars are tuned to the singer, not to A440. */
+    this.cents = 0;
     this.bpm = RHYTHMS.guayla.bpm;
     this.notes = generateMelody("guayla");
     this.playing = false;
@@ -95,6 +123,13 @@ export class MusicEngine {
     this.reverb.connect(this.master);
     this._noise = this._makeNoise();
     return ctx;
+  }
+
+  get root() {
+    return rootFor(this.key);
+  }
+  hz(midi) {
+    return 440 * Math.pow(2, (midi - 69) / 12 + this.cents / 1200);
   }
 
   get stepDur() {
@@ -142,14 +177,15 @@ export class MusicEngine {
     const inBar = step % r.stepsPerBar;
     const loopStep = step % (r.stepsPerBar * BARS_IN_LOOP);
 
-    if (r.low.includes(inBar)) this._lowKebero(time);
-    if (r.high.includes(inBar)) this._highKebero(time);
-    if (r.shaker.includes(inBar)) this._shaker(time, inBar % r.stepsPerBeat === 0 ? 0.12 : 0.06);
-    if (r.clap.includes(inBar)) this._clap(time);
+    let v;
+    if ((v = hit(r.low, inBar))) this._lowKebero(time, v);
+    if ((v = hit(r.high, inBar))) this._highKebero(time, v);
+    if ((v = hit(r.shaker, inBar))) this._shaker(time, v === 1 ? (inBar % r.stepsPerBeat === 0 ? 0.12 : 0.06) : v);
+    if ((v = hit(r.clap, inBar))) this._clap(time, v);
 
     // Bass: root on the downbeat, fifth on the second beat.
-    if (inBar === 0) this._bass(ROOT_MIDI - 24, time, this.stepDur * r.stepsPerBeat * 0.9);
-    if (inBar === r.stepsPerBar / 2) this._bass(ROOT_MIDI - 17, time, this.stepDur * r.stepsPerBeat * 0.8);
+    if (inBar === 0) this._bass(this.root - 24, time, this.stepDur * r.stepsPerBeat * 0.9);
+    if (inBar === r.stepsPerBar / 2) this._bass(this.root - 17, time, this.stepDur * r.stepsPerBeat * 0.8);
 
     if (loopStep % 2 === 0) {
       const col = loopStep / 2;
@@ -160,7 +196,7 @@ export class MusicEngine {
         // Hold until the next column that has a note (max 3 columns).
         let len = 1;
         while (len < 3 && ![...Array(ROWS).keys()].some((rr) => this.notes.has(`${rr}:${(col + len) % cols}`))) len++;
-        this._melody(rowToMidi(this.scale, row), time, len * 2 * this.stepDur);
+        this._melody(rowToMidi(this.scale, row, this.root), time, len * 2 * this.stepDur);
       }
       if (this.onStep) {
         const delay = Math.max(0, (time - this.ctx.currentTime) * 1000);
@@ -206,7 +242,7 @@ export class MusicEngine {
   }
 
   _melody(midi, time, dur) {
-    const f = midiToHz(midi + 12);
+    const f = this.hz(midi + 12);
     const ctx = this.ctx;
     const out = ctx.createGain();
     out.connect(this.master);
@@ -284,22 +320,22 @@ export class MusicEngine {
   _bass(midi, time, dur) {
     const g = this._env(time, 0.01, 0.35, 0.15, time + dur);
     g.connect(this.master);
-    this._osc("sine", midiToHz(midi), time, time + dur + 0.2, g);
+    this._osc("sine", this.hz(midi), time, time + dur + 0.2, g);
     const g2 = this._env(time, 0.01, 0.06, 0.1, time + dur);
     g2.connect(this.master);
-    this._osc("triangle", midiToHz(midi + 12), time, time + dur + 0.2, g2);
+    this._osc("triangle", this.hz(midi + 12), time, time + dur + 0.2, g2);
   }
 
-  _lowKebero(time) {
-    const g = this._env(time, 0.002, 0.9, 0.38);
+  _lowKebero(time, vel = 1) {
+    const g = this._env(time, 0.002, 0.9 * vel, 0.38);
     g.connect(this.master);
     const o = this._osc("sine", 150, time, time + 0.45, g);
     o.frequency.exponentialRampToValueAtTime(52, time + 0.3);
     this._noiseBurst(time, 0.02, 0.25, "lowpass", 1200, 0.7).connect(this.master);
   }
 
-  _highKebero(time) {
-    const g = this._env(time, 0.002, 0.45, 0.13);
+  _highKebero(time, vel = 1) {
+    const g = this._env(time, 0.002, 0.45 * vel, 0.13);
     g.connect(this.master);
     const o = this._osc("sine", 320, time, time + 0.16, g);
     o.frequency.exponentialRampToValueAtTime(190, time + 0.1);
@@ -310,9 +346,9 @@ export class MusicEngine {
     this._noiseBurst(time, 0.045, level, "highpass", 7000, 0.7).connect(this.master);
   }
 
-  _clap(time) {
+  _clap(time, vel = 1) {
     for (const d of [0, 0.012, 0.024]) {
-      this._noiseBurst(time + d, 0.06, 0.28, "bandpass", 1600, 1.1).connect(this.master);
+      this._noiseBurst(time + d, 0.06, 0.28 * vel, "bandpass", 1600, 1.1).connect(this.master);
     }
   }
 

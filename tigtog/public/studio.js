@@ -4,7 +4,7 @@
 import { t, getLang } from "./i18n.js";
 import { attachFidelInput, transliterate } from "./fidel.js";
 import {
-  MusicEngine, SCALES, RHYTHMS, INSTRUMENTS, ROWS, columnsFor, generateMelody, rowToMidi,
+  MusicEngine, SCALES, RHYTHMS, INSTRUMENTS, ROWS, KEYS, columnsFor, generateMelody, rowToMidi,
 } from "./music.js";
 
 const W = 720;
@@ -22,12 +22,12 @@ const FONT = '"Noto Sans Ethiopic", "Abyssinica SIL", "Nyala", system-ui, sans-s
 // Ge'ez hashtags, in the song's own language (Tigrinya / Amharic spellings).
 const TAGS = {
   ti: {
-    guayla: "ጓይላ", eskista: "እስክስታ", chikchika: "ችክችካ", ballad: "ደርፊ",
+    guayla: "ጓይላ", guaylaWedding: "ጓይላ", eskista: "እስክስታ", chikchika: "ችክችካ", ballad: "ደርፊ",
     krar: "ኽራር", masinko: "ዋጣ", washint: "ሸምበቆ", embilta: "እምብልታ",
     tizita: "ትዝታ", bati: "ባቲ", ambassel: "ኣምባሰል", anchihoye: "ኣንቺሆየ", lang: "ትግርኛ",
   },
   am: {
-    guayla: "ጓይላ", eskista: "እስክስታ", chikchika: "ችክችካ", ballad: "ዘፈን",
+    guayla: "ጓይላ", guaylaWedding: "ጓይላ", eskista: "እስክስታ", chikchika: "ችክችካ", ballad: "ዘፈን",
     krar: "ክራር", masinko: "ማሲንቆ", washint: "ዋሽንት", embilta: "እምቢልታ",
     tizita: "ትዝታ", bati: "ባቲ", ambassel: "አምባሰል", anchihoye: "አንቺሆዬ", lang: "አማርኛ",
   },
@@ -81,6 +81,11 @@ export function renderStudio(view, h) {
     buildGrid();
     if (engine.playing) engine.start();
   });
+  const keySelect = select(KEYS.map((k) => [k, k]), engine.key, (v) => { engine.key = v; preview(0); });
+  const centsValue = el("output", {}, `${engine.cents > 0 ? "+" : ""}${engine.cents}¢`);
+  const cents = el("input", { type: "range", min: "-50", max: "50", step: "1", value: String(engine.cents), "aria-label": t("fineTune"),
+    oninput: (e) => { engine.cents = Number(e.target.value); centsValue.textContent = `${engine.cents > 0 ? "+" : ""}${engine.cents}¢`; },
+    onchange: () => preview(0) });
   const instSelect = select(INSTRUMENTS.map((k) => [k, t(k)]), engine.instrument, (v) => { engine.instrument = v; preview(); });
 
   const playBtn = el("button", { class: "primary", type: "button", onclick: togglePlay }, `▶ ${t("play")}`);
@@ -94,7 +99,7 @@ export function renderStudio(view, h) {
     if (engine.playing || row === undefined) return;
     const ctx = engine.ensure();
     ctx.resume();
-    engine._melody(rowToMidi(engine.scale, row), ctx.currentTime + 0.01, 0.3);
+    engine._melody(rowToMidi(engine.scale, row, engine.root), ctx.currentTime + 0.01, 0.3);
   }
 
   // ---------------------------------------------------------- melody grid
@@ -436,6 +441,8 @@ export function renderStudio(view, h) {
             field(t("qenet"), scaleSelect),
             field(t("rhythm"), rhythmSelect),
             field(t("instrument"), instSelect),
+            field(t("key"), keySelect),
+            field(t("fineTune"), cents, centsValue),
             field(t("tempo"), tempo, tempoValue))),
         el("section", { class: "card" },
           el("div", { class: "card-head" }, el("h2", {}, t("melody")),

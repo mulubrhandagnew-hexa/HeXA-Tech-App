@@ -48,7 +48,7 @@ const STRINGS = {
     loginToPost: "Log in to post your song.",
     tizitaMajor: "Tizita major (ትዝታ)", tizitaMinor: "Tizita minor (ትዝታ)", batiMajor: "Bati major (ባቲ)",
     batiMinor: "Bati minor (ባቲ)", ambassel: "Ambassel (አምባሰል)", anchihoye: "Anchihoye (አንቺሆዬ)",
-    guayla: "Guayla (ጓይላ) 6/8", eskista: "Eskista (እስክስታ) 6/8", chikchika: "Chikchika (ችክችካ)", ballad: "Slow ballad 4/4",
+    guayla: "Guayla (ጓይላ) 6/8", guaylaWedding: "Guayla — wedding (ጓይላ መርዓ)", key: "Key", fineTune: "Fine tune", eskista: "Eskista (እስክስታ) 6/8", chikchika: "Chikchika (ችክችካ)", ballad: "Slow ballad 4/4",
     krar: "Krar (ክራር / ኽራር)", masinko: "Masinko / Chira-wata (ማሲንቆ / ጭራ-ዋጣ)", washint: "Washint / Shambeqo (ዋሽንት / ሸምበቆ)", embilta: "Embilta (እምብልታ)",
   },
 
@@ -97,7 +97,7 @@ const STRINGS = {
     loginToPost: "ደርፍኹም ንምልጣፍ እተዉ።",
     tizitaMajor: "ትዝታ (ዓቢ)", tizitaMinor: "ትዝታ (ንኡስ)", batiMajor: "ባቲ (ዓቢ)",
     batiMinor: "ባቲ (ንኡስ)", ambassel: "ኣምባሰል", anchihoye: "ኣንቺሆየ",
-    guayla: "ጓይላ 6/8", eskista: "እስክስታ 6/8", chikchika: "ችክችካ", ballad: "ቀስ ዝበለ 4/4",
+    guayla: "ጓይላ 6/8", guaylaWedding: "ጓይላ መርዓ", key: "መበገሲ ድምጺ", fineTune: "ምስትኽኻል ድምጺ", eskista: "እስክስታ 6/8", chikchika: "ችክችካ", ballad: "ቀስ ዝበለ 4/4",
     krar: "ኽራር", masinko: "ጭራ-ዋጣ (ዋጣ)", washint: "ሸምበቆ", embilta: "እምብልታ",
   },
 
@@ -146,7 +146,7 @@ const STRINGS = {
     loginToPost: "ዘፈንዎን ለመለጠፍ ይግቡ።",
     tizitaMajor: "ትዝታ (ሜጀር)", tizitaMinor: "ትዝታ (ማይነር)", batiMajor: "ባቲ (ሜጀር)",
     batiMinor: "ባቲ (ማይነር)", ambassel: "አምባሰል", anchihoye: "አንቺሆዬ",
-    guayla: "ጓይላ 6/8", eskista: "እስክስታ 6/8", chikchika: "ችክችካ", ballad: "ቀስ ያለ 4/4",
+    guayla: "ጓይላ 6/8", guaylaWedding: "የሰርግ ጓይላ", key: "መነሻ ድምፅ", fineTune: "የድምፅ ማስተካከያ", eskista: "እስክስታ 6/8", chikchika: "ችክችካ", ballad: "ቀስ ያለ 4/4",
     krar: "ክራር", masinko: "ማሲንቆ", washint: "ዋሽንት", embilta: "እምቢልታ",
   },
 };

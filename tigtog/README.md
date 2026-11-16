@@ -10,6 +10,10 @@ Make and share **music and videos in Tigrinya (ትግርኛ) and Amharic (አማ
   ስዕስዒት), and posted songs get Ge'ez hashtags (#ጓይላ #ኽራር …). Write
   lyrics in Fidel, then record a 9:16 music video (animated or camera
   background, optional vocals), with karaoke-style lyrics, and post it.
+- **Rhythms tuned on real Tigrinya songs:** ጓይላ (80 BPM triplet bounce) and
+  ጓይላ መርዓ (wedding, 88 BPM), measured from reference recordings, plus a key
+  selector and ±50¢ fine-tune so the beat can match a singer or krar that
+  isn't at A440. See [docs/reference-analysis.md](docs/reference-analysis.md).
 - **Fidel typing** everywhere: type Latin, get Ge'ez (`selam` → ሰላም,
   `Ab` → ኣብ, `` `amet `` → ዓመት, `::` → ።). No special keyboard needed.
 - **Interface in ትግርኛ, አማርኛ and English.** Posts are tagged by language, and
@@ -76,6 +80,8 @@ src/
   persistence/           InMemoryRepository, JsonFileRepository (atomic writes)
   api/server.ts          Express routes, uploads, static client, error mapping
   index.ts               bootstrap
+tools/analyze_reference.py  measure tempo, tuning, qenet and beat patterns of songs
+docs/reference-analysis.md  findings used to tune the rhythms
 public/
   app.js                 feed, profiles, upload, comments, routing
   studio.js              music-video studio: controls, canvas renderer, recorder
