@@ -69,7 +69,7 @@ is randomised).
 
 ## The bowed lead (ጭራ-ዋጣ)
 
-Measured with  on the sustained, ornamented lead
+Measured with `tools/analyze_ornaments.py` on the sustained, ornamented lead
 in the intro of *Koleu Tigray* (0:15–0:58, 44 notes, before the vocal). From
 the numbers alone it can't be told whether this is a wata or a keyboard
 played in wata style; either way it is a Tigrinya melodic line.
@@ -84,8 +84,8 @@ played in wata style; either way it is a Tigrinya melodic line.
 Changes: played two octaves lower; vibrato ~4 Hz with rate and depth
 randomised per note (many shallow, some deep) instead of a fixed 6 Hz;
 the fixed −53¢ scoop replaced by a slight, varied flat start; softer bow
-attack; nasal formant follows the pitch. Settings:  in
-.
+attack; nasal formant follows the pitch. Settings: `WATA` in
+`public/music.js`.
 
 ## Limits
 
