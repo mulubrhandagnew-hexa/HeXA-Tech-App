@@ -3,6 +3,34 @@
 Goal: a singing-voice model that sings ትግርኛ and አማርኛ lyrics on a melody,
 trained only on recordings that singers explicitly agreed to give Tigtog.
 
+## Priority: traditional Tigrinya songs and Tigray beats
+
+Training focuses on **traditional Tigrinya singing over traditional Tigray
+rhythms**. Much modern pop, both Amharic and "modernised" Tigrinya (Western
+or reggae beats), is built on borrowed beats, so it is not what Tigtog should
+learn from. In the reference analysis, the traditional Tigray wedding
+recording had a clearly different beat (sparse ከበሮ on each beat, a pickup,
+hand-claps) from modernised songs (busy bass-guitar low end).
+
+What follows from this in the app:
+
+- The voice page opens in **ትግርኛ** and in **traditional song** mode.
+- **Traditional songs from memory** (kind `song`): the singer hears the
+  traditional ጓይላ ከበሮ and claps (default 88 BPM, adjustable), sings a
+  traditional song they know, types its words in Fidel, and confirms it is a
+  traditional folk song or their own (not another artist's song). The melody
+  comes from the singer — that is what makes it authentic — so notes are
+  extracted later by pitch tracking.
+- **Guided prompts** now play the traditional ከበሮ under the guide, and lines
+  are sung on the measured Tigray bounce (long–short in each beat), not on
+  straight Western eighth notes.
+- Amharic recording stays available but is secondary.
+- The studio's default beat is **ጓይላ ባህላዊ**; the modern Guayla is labelled
+  as such.
+
+Good sources of singers: elders and village singers who know wedding songs,
+ጓይላ, harvest and work songs; traditional krar/wata players who also sing.
+
 No commercial music API sings these languages today (see the comparison
 in the project conversation), and the reference songs used to tune the studio
 are **not** training data: they belong to their artists.
@@ -33,7 +61,14 @@ The **"Teach Tigtog to sing"** page (`#/voice`, in the ＋ menu):
 - Raw microphone audio (no echo cancellation, noise suppression or auto gain).
   Singers should use headphones so the guide isn't recorded.
 
-## 2. Export
+## 2. Export (songs)
+
+Traditional songs are exported to `<lang>/songs/` with lyrics, phonemes,
+tempo, rhythm and the first downbeat's time. Before training, extract their
+melody (pitch tracking → notes on the known beat grid) and align phonemes;
+the beat timing makes this much easier than with uncontrolled recordings.
+
+## 2b. Export (guided prompts)
 
 ```bash
 node tools/export-voice-dataset.mjs --db data/tigtog.json --voice data/voice --out dataset

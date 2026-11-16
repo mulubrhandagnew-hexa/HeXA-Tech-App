@@ -296,3 +296,9 @@ body:not(.on-feed) .topbar { background: var(--bg); border-bottom: 1px solid var
 .recordings .del { margin-left: auto; background: none; border: 0; color: var(--muted); font-size: 12px; }
 .link.danger { color: var(--like); align-self: flex-start; }
 .prompt-card audio { width: 100%; }
+
+.lang-chips.static { position: static; transform: none; margin: 0 0 12px; padding: 0; }
+.lang-chips.static button { background: var(--surface-2); }
+.lang-chips.static button.on { background: var(--text); color: var(--bg); }
+.song-review { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+.song-review audio { width: 100%; }

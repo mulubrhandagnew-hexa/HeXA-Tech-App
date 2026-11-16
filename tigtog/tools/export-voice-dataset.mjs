@@ -12,6 +12,10 @@
  *   <out>/<lang>/metadata.jsonl           text, phonemes, notes, singer, consent
  *   <out>/<lang>/dictionary.txt           Fidel syllable <TAB> phonemes
  *   <out>/<lang>/phonemes.txt             phoneme inventory
+ *   <out>/<lang>/songs/wavs/*.wav, songs/songs.jsonl
+ *       traditional songs sung from memory over the traditional beat: lyrics,
+ *       phonemes, tempo and the time of the first downbeat. Their melody is
+ *       not labelled yet — extract notes (pitch tracking) before training.
  *
  * Only samples whose singer has a current consent are exported. Singers are
  * identified by an anonymous hash, never by username.
@@ -130,16 +134,28 @@ async function main() {
     const meta = [];
     let seconds = 0;
     const singers = new Set();
+    const songs = [];
+    let songSeconds = 0;
+    await mkdir(join(dir, "songs", "wavs"), { recursive: true });
     for (const s of state.voiceSamples ?? []) {
       if (s.language !== L || !consented.has(s.userId)) continue;
       const a = audio.get(s.audioId);
       if (!a || !existsSync(join(voice, a.fileName))) continue;
       const singer = "spk_" + createHash("sha256").update(s.userId).digest("hex").slice(0, 10);
       const name = `${singer}_${s.promptId}_${s.id.slice(0, 8)}`;
+      const wavDir = s.kind === "song" ? join(dir, "songs", "wavs") : join(dir, "wavs");
       if (hasFfmpeg) {
         const r = spawnSync("ffmpeg", ["-loglevel", "error", "-y", "-i", join(voice, a.fileName),
-          "-ac", "1", "-ar", "44100", "-sample_fmt", "s16", join(dir, "wavs", `${name}.wav`)]);
+          "-ac", "1", "-ar", "44100", "-sample_fmt", "s16", join(wavDir, `${name}.wav`)]);
         if (r.status !== 0) { console.warn(`skip ${name}: ${r.stderr}`); continue; }
+      }
+      if (s.kind === "song") {
+        songs.push({ name, singer, language: L, text: s.text, phonemes: s.phonemes, bpm: s.bpm,
+          rhythm: s.rhythm, beatStart: s.beatStart, durationSec: s.durationSec, songSource: s.songSource,
+          consentVersion: s.consentVersion });
+        songSeconds += s.durationSec;
+        singers.add(singer);
+        continue;
       }
       rows.push(transcription(s, name));
       meta.push({ name, singer, language: L, kind: s.kind, text: s.text, phonemes: s.phonemes,
@@ -153,7 +169,11 @@ async function main() {
     await writeFile(join(dir, "metadata.jsonl"), meta.map((m) => JSON.stringify(m)).join("\n") + (meta.length ? "\n" : ""));
     await writeFile(join(dir, "dictionary.txt"), dictionary(L));
     await writeFile(join(dir, "phonemes.txt"), ["SP", "AP", ...phonemeInventory(L)].join("\n") + "\n");
-    summary[L] = { samples: rows.length, minutes: Math.round((seconds / 60) * 10) / 10, singers: singers.size };
+    await writeFile(join(dir, "songs", "songs.jsonl"), songs.map((m) => JSON.stringify(m)).join("\n") + (songs.length ? "\n" : ""));
+    summary[L] = {
+      guided: rows.length, guidedMinutes: Math.round((seconds / 60) * 10) / 10,
+      songs: songs.length, songMinutes: Math.round((songSeconds / 60) * 10) / 10, singers: singers.size,
+    };
   }
   console.log(JSON.stringify(summary));
 }

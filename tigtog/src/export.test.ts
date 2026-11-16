@@ -33,6 +33,16 @@ describe("voice dataset export", () => {
     expect(r.ph_num.split(" ").length).toBe(r.note_seq.split(" ").length);
   });
 
+  it("lines sit on the Tigray bounce: long slot on the beat, short slot at 2/3", () => {
+    const beat = 60 / 80;
+    for (const p of promptsFor("ti").filter((x: { kind: string }) => x.kind === "line")) {
+      for (const n of guideNotes(p, { root: 50, bpm: 80 })) {
+        const phase = Math.round(((n.start / beat) % 1) * 3);
+        expect([0, 2]).toContain(phase);
+      }
+    }
+  });
+
   it("every prompt has one guide note per Fidel syllable", () => {
     for (const lang of ["ti", "am"]) {
       const prompts = promptsFor(lang);

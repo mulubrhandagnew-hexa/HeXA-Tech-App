@@ -22,11 +22,14 @@ import { newId } from "../domain/auth.js";
 export interface NewVoiceSample {
   audioId: string;
   promptId: string;
-  kind: "sweep" | "line";
+  kind: "sweep" | "line" | "song";
   language: "ti" | "am";
   text: string;
   phonemes: string;
   notes: VoiceNote[];
+  rhythm?: string;
+  beatStart?: number;
+  songSource?: "traditional" | "own";
   bpm: number;
   cents: number;
   durationSec: number;
@@ -37,6 +40,8 @@ export interface VoiceStats {
   samples: number;
   minutes: number;
   singers: number;
+  /** Traditional songs sung from memory (the training priority). */
+  songs: number;
 }
 
 export class VoiceStore {
@@ -139,6 +144,7 @@ export class VoiceStore {
         samples: list.length,
         minutes: Math.round((list.reduce((t, s) => t + s.durationSec, 0) / 60) * 10) / 10,
         singers: new Set(list.map((s) => s.userId)).size,
+        songs: list.filter((s) => s.kind === "song").length,
       };
     });
   }

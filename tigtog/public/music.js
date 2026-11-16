@@ -23,6 +23,9 @@ export const SCALES = {
  * medium, gap — on each beat; the traditional wedding Guayla is ~88 BPM with
  * kebero on each beat, a pickup before the bar, and hand-claps on the beats.
  */
+/** Order shown in the studio: traditional Tigray first. */
+export const RHYTHM_ORDER = ["guaylaWedding", "guayla", "eskista", "chikchika", "ballad"];
+
 export const RHYTHMS = {
   guayla: {
     stepsPerBar: 12, stepsPerBeat: 6, bpm: 80,
@@ -157,13 +160,15 @@ export class MusicEngine {
   constructor() {
     this.ctx = null;
     this.scale = "tizitaMajor";
-    this.rhythm = "guayla";
+    // Traditional Tigray Guayla is the default: Tigtog's focus is Tigrinya
+    // traditional music, not borrowed/modernised beats.
+    this.rhythm = "guaylaWedding";
     this.instrument = "krar";
     this.key = "A";
     /** Fine tuning in cents: krars are tuned to the singer, not to A440. */
     this.cents = 0;
-    this.bpm = RHYTHMS.guayla.bpm;
-    this.notes = generateMelody("guayla");
+    this.bpm = RHYTHMS.guaylaWedding.bpm;
+    this.notes = generateMelody("guaylaWedding");
     this.playing = false;
     this.onStep = null; // (column) => void, for the UI playhead
     this._timer = null;
@@ -215,13 +220,19 @@ export class MusicEngine {
     return { bar: Math.floor(bars), frac: bars % 1, time };
   }
 
-  async start() {
+  /**
+   * Start the loop. `at` = AudioContext time of the first downbeat (default:
+   * now). `drumsOnly` plays just the rhythm (ከበሮ, claps, shaker) — used as the
+   * backing beat when singers record.
+   */
+  async start({ at, drumsOnly = false } = {}) {
     const ctx = this.ensure();
     if (ctx.state === "suspended") await ctx.resume();
     this.stop();
     this.playing = true;
+    this.drumsOnly = drumsOnly;
     this.step = 0;
-    this.startTime = ctx.currentTime + 0.08;
+    this.startTime = at ?? ctx.currentTime + 0.08;
     this.nextTime = this.startTime;
     const tick = () => {
       while (this.nextTime < ctx.currentTime + 0.12) {
@@ -252,6 +263,7 @@ export class MusicEngine {
     if ((v = hit(r.clap, inBar))) this._clap(time, v);
 
     // Bass: root on the downbeat, fifth on the second beat.
+    if (this.drumsOnly) return;
     if (inBar === 0) this._bass(this.root - 24, time, this.stepDur * r.stepsPerBeat * 0.9);
     if (inBar === r.stepsPerBar / 2) this._bass(this.root - 17, time, this.stepDur * r.stepsPerBeat * 0.8);
 

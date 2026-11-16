@@ -103,11 +103,22 @@ export interface VoiceSample {
   userId: string;
   audioId: string;
   promptId: string;
-  kind: "sweep" | "line";
+  /**
+   * sweep/line: guided prompts with exact guide notes.
+   * song: a traditional (or the singer's own) song sung from memory over the
+   * traditional beat; `notes` is empty — the melody is extracted later.
+   */
+  kind: "sweep" | "line" | "song";
   language: "ti" | "am";
   text: string;
   phonemes: string; // from public/g2p.js, words separated by " | "
   notes: VoiceNote[];
+  /** Backing rhythm the singer heard, e.g. "guaylaWedding". */
+  rhythm?: string;
+  /** Seconds into the audio of the first downbeat of the backing rhythm. */
+  beatStart?: number;
+  /** For songs: the singer confirmed it is a traditional folk song or their own. */
+  songSource?: "traditional" | "own";
   bpm: number;
   cents: number; // tuning offset of the guide from A440
   durationSec: number;

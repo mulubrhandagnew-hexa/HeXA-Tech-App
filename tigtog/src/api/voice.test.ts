@@ -84,10 +84,31 @@ describe("voice dataset API", () => {
 
     const stats = await request(app).get("/api/voice/stats").expect(200);
     expect(stats.body.stats).toEqual([
-      { language: "ti", samples: 1, minutes: 0.1, singers: 1 },
-      { language: "am", samples: 0, minutes: 0, singers: 0 },
+      { language: "ti", samples: 1, minutes: 0.1, singers: 1, songs: 0 },
+      { language: "am", samples: 0, minutes: 0, singers: 0, songs: 0 },
     ]);
     expect((await repo.load()).voiceSamples).toHaveLength(1);
+  });
+
+  it("accepts traditional songs sung from memory, with beat info and source confirmation", async () => {
+    const a = await signup("abeba");
+    await request(app).post("/api/voice/consent").set(a).send(CONSENT);
+    const song = (audioId: string) => ({
+      audioId, promptId: "ti-song-1", kind: "song", language: "ti",
+      text: "ሰላም ሰላም ሃገረይ", phonemes: "s ae l a m | s ae l a m | h a g ae r ae y",
+      notes: [], bpm: 88, cents: 0, durationSec: 185, rhythm: "guaylaWedding", beatStart: 2.9,
+      songSource: "traditional",
+    });
+    const up1 = await upload(a);
+    // Missing the traditional/own confirmation → rejected.
+    const { songSource: _omit, ...noSource } = song(up1.body.audio.id);
+    await request(app).post("/api/voice/samples").set(a).send(noSource).expect(400);
+    // Guided prompts still need notes and must be short.
+    await request(app).post("/api/voice/samples").set(a).send({ ...sample(up1.body.audio.id), notes: [] }).expect(400);
+    const r = await request(app).post("/api/voice/samples").set(a).send(song(up1.body.audio.id)).expect(201);
+    expect(r.body.sample).toMatchObject({ kind: "song", rhythm: "guaylaWedding", beatStart: 2.9, songSource: "traditional" });
+    const stats = await request(app).get("/api/voice/stats").expect(200);
+    expect(stats.body.stats[0]).toMatchObject({ language: "ti", songs: 1, minutes: 3.1 });
   });
 
   it("only the singer can see or delete their recordings", async () => {

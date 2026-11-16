@@ -84,18 +84,28 @@ const voiceNoteSchema = z.object({
   start: z.number().min(0).max(120),
   dur: z.number().positive().max(10),
 });
-const voiceSampleSchema = z.object({
-  audioId: z.string().min(1),
-  promptId: z.string().min(1).max(40),
-  kind: z.enum(["sweep", "line"]),
-  language: z.enum(["ti", "am"]),
-  text: z.string().min(1).max(300),
-  phonemes: z.string().min(1).max(2000),
-  notes: z.array(voiceNoteSchema).min(1).max(200),
-  bpm: z.number().min(30).max(240),
-  cents: z.number().min(-50).max(50),
-  durationSec: z.number().min(0.5).max(120),
-});
+const voiceSampleSchema = z
+  .object({
+    audioId: z.string().min(1),
+    promptId: z.string().min(1).max(60),
+    kind: z.enum(["sweep", "line", "song"]),
+    language: z.enum(["ti", "am"]),
+    text: z.string().min(1).max(3000),
+    phonemes: z.string().min(1).max(20000),
+    notes: z.array(voiceNoteSchema).max(200),
+    bpm: z.number().min(30).max(240),
+    cents: z.number().min(-50).max(50),
+    durationSec: z.number().min(0.5).max(600),
+    rhythm: z.string().max(30).optional(),
+    beatStart: z.number().min(0).max(60).optional(),
+    songSource: z.enum(["traditional", "own"]).optional(),
+  })
+  .refine((v) => v.kind === "song" || (v.notes.length > 0 && v.durationSec <= 120), {
+    message: "guided prompts need their guide notes and are at most 120 s",
+  })
+  .refine((v) => v.kind !== "song" || (v.songSource && v.rhythm && v.beatStart !== undefined), {
+    message: "songs need the backing rhythm, its start, and confirmation that the song is traditional or your own",
+  });
 
 export interface ServerOptions {
   tigtog: Tigtog;
@@ -400,7 +410,7 @@ export function createServer(opts: ServerOptions): Express {
   app.post(
     "/api/voice/audio",
     requireAuth,
-    express.raw({ type: Object.keys(VOICE_AUDIO_TYPES), limit: 20 * 1024 * 1024 }),
+    express.raw({ type: Object.keys(VOICE_AUDIO_TYPES), limit: 40 * 1024 * 1024 }),
     wrap(async (req, res) => {
       const contentType = (req.header("content-type") ?? "").split(";")[0]!.trim().toLowerCase();
       const ext = VOICE_AUDIO_TYPES[contentType];

@@ -507,7 +507,7 @@ async function route() {
       }
       return renderFeed("/api/feed/following", () => empty(t("followingEmptyTitle"), t("followingEmptyText")));
     case "voice":
-      cleanup = renderVoice(view, { api, store, el, toast, requireLogin });
+      cleanup = renderVoice(view, { api, store, el, toast, requireLogin, fidelField });
       return;
     case "studio":
       cleanup = renderStudio(view, {

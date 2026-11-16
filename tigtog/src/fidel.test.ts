@@ -86,10 +86,13 @@ describe("krar string model", () => {
         const f = 440 * Math.pow(2, (midi - 69) / 12);
         const out: Float32Array = renderKrar(f, sr);
         let peak = 0;
-        for (const v of out) {
-          expect(Number.isFinite(v)).toBe(true);
-          peak = Math.max(peak, Math.abs(v));
+        let nonFinite = 0;
+        for (let i = 0; i < out.length; i++) {
+          const v = out[i]!;
+          if (!Number.isFinite(v)) nonFinite++;
+          else if (Math.abs(v) > peak) peak = Math.abs(v);
         }
+        expect(nonFinite, `non-finite samples at midi ${midi}, ${sr} Hz`).toBe(0);
         expect(peak).toBeCloseTo(1, 5);
         // Still ringing after a second, quieter than the start.
         const rms = (a: number, b: number) =>

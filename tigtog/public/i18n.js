@@ -48,7 +48,7 @@ const STRINGS = {
     loginToPost: "Log in to post your song.",
     tizitaMajor: "Tizita major (ትዝታ)", tizitaMinor: "Tizita minor (ትዝታ)", batiMajor: "Bati major (ባቲ)",
     batiMinor: "Bati minor (ባቲ)", ambassel: "Ambassel (አምባሰል)", anchihoye: "Anchihoye (አንቺሆዬ)",
-    guayla: "Guayla (ጓይላ) 6/8", guaylaWedding: "Guayla — wedding (ጓይላ መርዓ)", key: "Key", fineTune: "Fine tune", eskista: "Eskista (እስክስታ) 6/8", chikchika: "Chikchika (ችክችካ)", ballad: "Slow ballad 4/4",
+    guayla: "Guayla — modern (ጓይላ ዘመናዊ)", guaylaWedding: "Guayla — traditional Tigray (ጓይላ ባህላዊ)", key: "Key", fineTune: "Fine tune", eskista: "Eskista (እስክስታ) 6/8", chikchika: "Chikchika (ችክችካ)", ballad: "Slow ballad 4/4",
     krar: "Krar (ክራር / ኽራር)", masinko: "Masinko / Chira-wata (ማሲንቆ / ጭራ-ዋጣ)", washint: "Washint / Shambeqo (ዋሽንት / ሸምበቆ)", embilta: "Embilta (እምብልታ)",
     // voice dataset
     voiceTitle: "Teach Tigtog to sing",
@@ -77,8 +77,20 @@ const STRINGS = {
     withdraw: "Withdraw and delete all my recordings",
     withdrawConfirm: "Delete all your recordings permanently?",
     withdrawn: "All your recordings were deleted",
-    datasetStats: "Dataset so far: {ti} min ትግርኛ · {am} min አማርኛ · {n} singers",
+    datasetStats: "Dataset so far: {ti} min ትግርኛ ({songs} traditional songs) · {am} min አማርኛ · {n} singers",
     allDone: "You've recorded every prompt. Thank you!",
+    // traditional songs
+    guidedMode: "Guided prompts",
+    songMode: "Traditional song",
+    songIntro: "Sing a traditional Tigrinya song you know by heart — a wedding song, a guayla, a song from your village — over the traditional ከበሮ and claps. Then type its words.",
+    songLyrics: "Words of the song",
+    songLyricsPlaceholder: "Type the words you sang, one verse per line",
+    songSourceLabel: "This song is…",
+    songTraditional: "A traditional folk song",
+    songOwn: "My own song",
+    songSourceNote: "Please don't record other artists' songs or recordings.",
+    needLyrics: "Type the words of the song, then keep it",
+    songRecording: "Recording… {s}s — press Stop when you finish",
   },
 
   ti: {
@@ -126,7 +138,7 @@ const STRINGS = {
     loginToPost: "ደርፍኹም ንምልጣፍ እተዉ።",
     tizitaMajor: "ትዝታ (ዓቢ)", tizitaMinor: "ትዝታ (ንኡስ)", batiMajor: "ባቲ (ዓቢ)",
     batiMinor: "ባቲ (ንኡስ)", ambassel: "ኣምባሰል", anchihoye: "ኣንቺሆየ",
-    guayla: "ጓይላ 6/8", guaylaWedding: "ጓይላ መርዓ", key: "መበገሲ ድምጺ", fineTune: "ምስትኽኻል ድምጺ", eskista: "እስክስታ 6/8", chikchika: "ችክችካ", ballad: "ቀስ ዝበለ 4/4",
+    guayla: "ጓይላ (ዘመናዊ)", guaylaWedding: "ጓይላ ባህላዊ (ናይ መርዓ)", key: "መበገሲ ድምጺ", fineTune: "ምስትኽኻል ድምጺ", eskista: "እስክስታ 6/8", chikchika: "ችክችካ", ballad: "ቀስ ዝበለ 4/4",
     krar: "ኽራር", masinko: "ጭራ-ዋጣ (ዋጣ)", washint: "ሸምበቆ", embilta: "እምብልታ",
     // voice dataset
     voiceTitle: "ድምጽኹም ንTigtog ኣበርክቱ",
@@ -155,8 +167,20 @@ const STRINGS = {
     withdraw: "ኣቋርጽ፣ ኩሉ ቅዳሓተይ ደምስስ",
     withdrawConfirm: "ኩሉ ቅዳሓትኩም ንሓዋሩ ይደምሰስ?",
     withdrawn: "ኩሉ ቅዳሓትኩም ተደምሲሱ",
-    datasetStats: "ክሳብ ሕጂ፦ {ti} ደቒቕ ትግርኛ · {am} ደቒቕ አማርኛ · {n} ደረፍቲ",
+    datasetStats: "ክሳብ ሕጂ፦ {ti} ደቒቕ ትግርኛ ({songs} ባህላዊ ደርፍታት) · {am} ደቒቕ አማርኛ · {n} ደረፍቲ",
     allDone: "ኩሉ ቅዳሕ ወዲእኩም። የቐንየልና!",
+    // traditional songs
+    guidedMode: "ብመምርሒ",
+    songMode: "ባህላዊ ደርፊ",
+    songIntro: "ብልብኹም እትፈልጥዎ ባህላዊ ደርፊ ትግርኛ — ደርፊ መርዓ፣ ጓይላ፣ ደርፊ ዓድኹም — ምስ ባህላዊ ከበሮን ጣቕዒትን ደርፉ። ድሕሪኡ ቃላቱ ጽሓፉ።",
+    songLyrics: "ቃላት ናይቲ ደርፊ",
+    songLyricsPlaceholder: "ዝደረፍኩምዎ ቃላት ጽሓፉ፣ ነፍሲ ወከፍ ስንኝ ኣብ ሓደ መስመር",
+    songSourceLabel: "እዚ ደርፊ…",
+    songTraditional: "ባህላዊ ደርፊ እዩ",
+    songOwn: "ናተይ ደርፊ እዩ",
+    songSourceNote: "በጃኹም ደርፍታት ወይ ቅዳሓት ካልኦት ስነ-ጥበባውያን ኣይትቕድሑ።",
+    needLyrics: "ቃላት ናይቲ ደርፊ ጽሓፉ፣ ድሕሪኡ ዓቅቡ",
+    songRecording: "ይቕዳሕ ኣሎ… {s} ካልኢት — ምስ ወዳእኩም ደው ኣብሉ",
   },
 
   am: {
@@ -204,7 +228,7 @@ const STRINGS = {
     loginToPost: "ዘፈንዎን ለመለጠፍ ይግቡ።",
     tizitaMajor: "ትዝታ (ሜጀር)", tizitaMinor: "ትዝታ (ማይነር)", batiMajor: "ባቲ (ሜጀር)",
     batiMinor: "ባቲ (ማይነር)", ambassel: "አምባሰል", anchihoye: "አንቺሆዬ",
-    guayla: "ጓይላ 6/8", guaylaWedding: "የሰርግ ጓይላ", key: "መነሻ ድምፅ", fineTune: "የድምፅ ማስተካከያ", eskista: "እስክስታ 6/8", chikchika: "ችክችካ", ballad: "ቀስ ያለ 4/4",
+    guayla: "ጓይላ (ዘመናዊ)", guaylaWedding: "ባህላዊ ጓይላ (የሰርግ)", key: "መነሻ ድምፅ", fineTune: "የድምፅ ማስተካከያ", eskista: "እስክስታ 6/8", chikchika: "ችክችካ", ballad: "ቀስ ያለ 4/4",
     krar: "ክራር", masinko: "ማሲንቆ", washint: "ዋሽንት", embilta: "እምቢልታ",
     // voice dataset
     voiceTitle: "ድምፅዎን ለTigtog ያበርክቱ",
@@ -233,8 +257,20 @@ const STRINGS = {
     withdraw: "አቋርጥ፣ ሁሉንም ቅጂዎቼን ሰርዝ",
     withdrawConfirm: "ሁሉም ቅጂዎችዎ እስከመጨረሻው ይሰረዙ?",
     withdrawn: "ሁሉም ቅጂዎችዎ ተሰርዘዋል",
-    datasetStats: "እስካሁን፦ {ti} ደቂቃ ትግርኛ · {am} ደቂቃ አማርኛ · {n} ዘፋኞች",
+    datasetStats: "እስካሁን፦ {ti} ደቂቃ ትግርኛ ({songs} ባህላዊ ዘፈኖች) · {am} ደቂቃ አማርኛ · {n} ዘፋኞች",
     allDone: "ሁሉንም ቀድተው ጨርሰዋል። እናመሰግናለን!",
+    // traditional songs
+    guidedMode: "በመሪ",
+    songMode: "ባህላዊ ዘፈን",
+    songIntro: "በልብዎ የሚያውቁትን ባህላዊ የትግርኛ ዘፈን — የሰርግ ዘፈን፣ ጓይላ፣ የአካባቢዎን ዘፈን — ከባህላዊ ከበሮና ጭብጨባ ጋር ይዝፈኑ። ከዚያ ቃላቱን ይጻፉ።",
+    songLyrics: "የዘፈኑ ቃላት",
+    songLyricsPlaceholder: "የዘፈኑትን ቃላት ይጻፉ፣ በእያንዳንዱ መስመር አንድ ስንኝ",
+    songSourceLabel: "ይህ ዘፈን…",
+    songTraditional: "ባህላዊ ዘፈን ነው",
+    songOwn: "የራሴ ዘፈን ነው",
+    songSourceNote: "እባክዎ የሌሎች አርቲስቶችን ዘፈኖች ወይም ቅጂዎች አይቅዱ።",
+    needLyrics: "የዘፈኑን ቃላት ይጻፉ፣ ከዚያ ያስቀምጡ",
+    songRecording: "በመቅዳት ላይ… {s} ሰከንድ — ሲጨርሱ አቁም ይጫኑ",
   },
 };
 

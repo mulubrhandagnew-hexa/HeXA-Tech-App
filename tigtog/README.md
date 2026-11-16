@@ -19,10 +19,12 @@ Make and share **music and videos in Tigrinya (ትግርኛ) and Amharic (አማ
 - **A krar modelled on a real one:** a physically modelled plucked string
   whose overtones, decay and range were matched to isolated notes from a
   krar recording.
-- **Teach Tigtog to sing:** singers (with explicit, revocable consent) record
-  guided ሀ ሁ ሂ prompts and lines; each recording is saved privately with its
-  phonemes and exact notes, ready to train Tigtog's own ትግርኛ/አማርኛ singing
-  voice. See [docs/voice-model-plan.md](docs/voice-model-plan.md).
+- **Teach Tigtog to sing:** focused on **traditional Tigrinya songs and Tigray
+  beats**. Singers (with explicit, revocable consent) sing traditional songs
+  they know over the traditional ጓይላ ከበሮ and claps, and guided ሀ ሁ ሂ
+  prompts; each recording is saved privately with its lyrics, phonemes and
+  beat (and exact notes for guided prompts), ready to train Tigtog's own
+  singing voice. See [docs/voice-model-plan.md](docs/voice-model-plan.md).
 - **Fidel typing** everywhere: type Latin, get Ge'ez (`selam` → ሰላም,
   `Ab` → ኣብ, `` `amet `` → ዓመት, `::` → ።). No special keyboard needed.
 - **Interface in ትግርኛ, አማርኛ and English.** Posts are tagged by language, and

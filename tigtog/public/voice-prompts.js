@@ -4,7 +4,9 @@
 //  - "sweep": one Fidel row sung as ሀ ሁ ሂ ሃ ሄ ህ ሆ, one syllable per beat,
 //    up the Tizita-major scale (the qenet of 8 of 9 reference songs). This
 //    covers every consonant × vowel and gives clean, well-separated labels.
-//  - "line": short everyday phrases, one syllable per eighth note.
+//  - "line": short everyday phrases sung on the traditional Tigray Guayla
+//    bounce (long–short in each beat), over the traditional ከበሮ and claps.
+//  - Traditional songs from memory are recorded separately (kind "song").
 // The lines were written for this app and should be reviewed by native
 // speakers; more can be added here at any time.
 import { SCALES } from "./music.js";
@@ -83,9 +85,12 @@ export function guideNotes(prompt, { root, bpm }) {
     });
     return notes;
   }
+  // Lines follow the Tigray Guayla bounce measured in the reference songs:
+  // each beat (dotted quarter) has a long slot (2/3 beat) then a short slot
+  // (1/3 beat). Syllables fill slots in order; a word break skips one slot.
   const rand = seeded(prompt.id);
-  const eighth = beat / 2;
-  let t = 0;
+  const slots = [[0, 2 / 3], [2 / 3, 1 / 3]];
+  let slot = 0;
   let row = 2;
   const words = prompt.text.split(/\s+/);
   words.forEach((word, wi) => {
@@ -95,11 +100,14 @@ export function guideNotes(prompt, { root, bpm }) {
       const step = Math.floor(rand() * 3) - 1;
       row = Math.max(0, Math.min(6, row + step));
       if (last) row = 0; // end the phrase on the root
-      const len = last ? eighth * 3 : eighth;
-      notes.push({ syllable: syl, midi: midiOf(row), start: t, dur: len * 0.92 });
-      t += len;
+      const [pos, len] = slots[slot % 2];
+      const start = (Math.floor(slot / 2) + pos) * beat;
+      // The final syllable rings to the end of the next beat.
+      const dur = last ? (len + (slot % 2 === 0 ? 1 / 3 : 0) + 1) * beat : len * beat;
+      notes.push({ syllable: syl, midi: midiOf(row), start, dur: dur * 0.92 });
+      slot++;
     });
-    t += eighth; // breath between words
+    slot++; // breath between words
   });
   return notes;
 }

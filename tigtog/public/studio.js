@@ -4,7 +4,7 @@
 import { t, getLang } from "./i18n.js";
 import { attachFidelInput, transliterate } from "./fidel.js";
 import {
-  MusicEngine, SCALES, RHYTHMS, INSTRUMENTS, ROWS, KEYS, columnsFor, generateMelody, rowToMidi,
+  MusicEngine, SCALES, RHYTHMS, RHYTHM_ORDER, INSTRUMENTS, ROWS, KEYS, columnsFor, generateMelody, rowToMidi,
 } from "./music.js";
 
 const W = 720;
@@ -72,7 +72,7 @@ export function renderStudio(view, h) {
   const tempoValue = el("output", {}, String(engine.bpm));
   const tempo = el("input", { type: "range", min: "50", max: "160", value: String(engine.bpm), "aria-label": t("tempo"),
     oninput: (e) => { engine.bpm = Number(e.target.value); tempoValue.textContent = e.target.value; } });
-  const rhythmSelect = select(Object.keys(RHYTHMS).map((k) => [k, t(k)]), engine.rhythm, (v) => {
+  const rhythmSelect = select(RHYTHM_ORDER.map((k) => [k, t(k)]), engine.rhythm, (v) => {
     engine.rhythm = v;
     engine.bpm = RHYTHMS[v].bpm;
     tempo.value = String(engine.bpm);
