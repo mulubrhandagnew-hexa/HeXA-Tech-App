@@ -24,7 +24,8 @@ export const RHYTHMS = {
   ballad: { stepsPerBar: 16, stepsPerBeat: 4, bpm: 72, low: [0, 10], high: [4, 12], shaker: [0, 2, 4, 6, 8, 10, 12, 14], clap: [] },
 };
 
-export const INSTRUMENTS = ["krar", "masinko", "washint"];
+// masinko = Amharic ማሲንቆ / Tigrinya ጭራ-ዋጣ (ዋጣ); washint = ዋሽንት / ሸምበቆ.
+export const INSTRUMENTS = ["krar", "masinko", "washint", "embilta"];
 
 /** Melody grid shape: 2 bars, one column per 2 steps, 10 rows (2 octaves). */
 export const ROWS = 10;
@@ -243,8 +244,29 @@ export class MusicEngine {
       // Slight scoop into the note.
       o.frequency.setValueAtTime(f * 0.97, time);
       o.frequency.exponentialRampToValueAtTime(f, time + 0.08);
+    } else if (this.instrument === "embilta") {
+      // Embilta (እምብልታ): end-blown horn. Brassy swell, the filter opens
+      // as the note blooms, slight pitch rise at the start.
+      const end = time + dur;
+      const g = this._env(time, 0.035, 0.2, 0.12, end);
+      const lp = ctx.createBiquadFilter();
+      lp.type = "lowpass";
+      lp.Q.value = 3;
+      lp.frequency.setValueAtTime(500, time);
+      lp.frequency.exponentialRampToValueAtTime(2400, time + 0.09);
+      lp.frequency.exponentialRampToValueAtTime(1500, end + 0.1);
+      lp.connect(g);
+      g.connect(out);
+      const fb = f / 2; // horns sit an octave lower
+      const o = this._osc("sawtooth", fb * 0.985, time, end + 0.15, lp);
+      o.frequency.exponentialRampToValueAtTime(fb, time + 0.06);
+      const sq = ctx.createGain();
+      sq.gain.value = 0.35;
+      sq.connect(lp);
+      this._osc("square", fb * 1.002, time, end + 0.15, sq);
+      this._noiseBurst(time, 0.05, 0.05, "bandpass", fb * 4, 2).connect(out);
     } else {
-      // Washint (end-blown flute): pure tone + breath noise.
+      // Washint / shambeqo (end-blown flute): pure tone + breath noise.
       const end = time + dur;
       const g = this._env(time, 0.05, 0.28, 0.1, end);
       g.connect(out);

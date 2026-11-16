@@ -4,7 +4,10 @@ Make and share **music and videos in Tigrinya (ትግርኛ) and Amharic (አማ
 
 - **Studio**: compose a loop in an Ethiopian/Eritrean qenet (ቅኝት: Tizita,
   Bati, Ambassel, Anchihoye), over Guayla, Eskista, Chikchika or slow 4/4
-  rhythms, with krar, masinko or washint-style melody and kebero drums. Write
+  rhythms, with a melody on ኽራር/ክራር (krar), ጭራ-ዋጣ/ማሲንቆ (chira-wata /
+  masinko), ሸምበቆ/ዋሽንት (shambeqo / washint) or እምብልታ (embilta), over kebero
+  drums. In the ትግርኛ interface the controls use Tigrinya terms (ቕኒት,
+  ስዕስዒት), and posted songs get Ge'ez hashtags (#ጓይላ #ኽራር …). Write
   lyrics in Fidel, then record a 9:16 music video (animated or camera
   background, optional vocals), with karaoke-style lyrics, and post it.
 - **Fidel typing** everywhere: type Latin, get Ge'ez (`selam` → ሰላም,
@@ -24,7 +27,7 @@ stored on disk.
 ```bash
 cd tigtog
 npm install
-npm test          # 31 tests: service, HTTP API, Fidel keymap
+npm test          # 33 tests: service, HTTP API, Fidel keymap
 npm run dev       # http://localhost:3001 with live reload
 # or
 npm run build && npm start
@@ -42,6 +45,7 @@ npm run build && npm start
 | Type | Get | | Type | Get |
 |---|---|---|---|---|
 | `le lu li la lE l lo` | ለ ሉ ሊ ላ ሌ ል ሎ | | `lW` | ሏ |
+| `gWa qWa kWa` | ጓ ቋ ኳ | | `gWe gWi gWE` | ጐ ጒ ጔ |
 | `sh` / `x`, `ch` / `c` | ሽ, ች | | `ts` / `S` | ጽ |
 | `ny` / `N`, `zh` / `Z` | ኝ, ዥ | | `kh` / `K`, `qh` / `Q` | ኽ, ቕ (Tigrinya) |
 | `H`, `T`, `C`, `P` | ሕ, ጥ, ጭ, ጵ | | `` ` `` | ዕ |

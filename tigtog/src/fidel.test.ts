@@ -23,6 +23,25 @@ describe("Fidel phonetic typing", () => {
     expect(t("lie")).toBe("ሌ");
   });
 
+  it("handles labialized (wa) forms, including the velar rows", () => {
+    expect(t("gWayla")).toBe("ጓይላ");
+    expect(t("lWa")).toBe("ሏ");
+    expect(t("qWa kWa QWa KWa")).toBe("ቋ ኳ ቛ ዃ");
+    expect(t("gWe gWi gWE gW")).toBe("ጐ ጒ ጔ ጕ");
+    expect(t("swa")).toBe("ስዋ"); // plain w stays a separate letter
+  });
+
+  it("writes the Tigrinya music words", () => {
+    expect(t("gWayla")).toBe("ጓይላ");
+    expect(t("Krar")).toBe("ኽራር");
+    expect(t("Qnit")).toBe("ቕኒት");
+    expect(t("s`s`it")).toBe("ስዕስዒት");
+    expect(t("shembeqo")).toBe("ሸምበቆ");
+    expect(t("emblta")).toBe("እምብልታ");
+    expect(t("embilta")).toBe("እምቢልታ"); // Amharic spelling
+    expect(t("Cra-waTa")).toBe("ጭራ-ዋጣ");
+  });
+
   it("handles digraphs", () => {
     expect(t("sha")).toBe("ሻ");
     expect(t("cha")).toBe("ቻ");

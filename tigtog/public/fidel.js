@@ -1,7 +1,8 @@
 // Latin → Ge'ez (Fidel) phonetic typing for Tigrinya and Amharic.
 //
 // Type a consonant, then a vowel:   s e l a m  → ሰላም
-//   e = 1st order (ሰ)   u = ሱ   i = ሲ   a = ሳ   E or ie = ሴ   (none) = ስ   o = ሶ   W = ሷ
+//   e = 1st order (ሰ)   u = ሱ   i = ሲ   a = ሳ   E or ie = ሴ   (none) = ስ   o = ሶ
+//   W = "wa" form: lW / lWa → ሏ;  gWa → ጓ  qWa → ቋ  kWa → ኳ  (gWe ጐ, gWi ጒ, gWE ጔ, gW ጕ)
 // Digraphs: sh/x ሽ  ch/c ች  ts/S ጽ  ny/N ኝ  zh/Z ዥ  kh/K ኽ  qh/Q ቕ
 // Uppercase: H ሕ  T ጥ  C ጭ  P ጵ   ` = ዕ (ayn)   ' = separator (ን'የ → ንእየ is n'ie)
 // Standalone vowels: a አ  A ኣ  u ኡ  i ኢ  E ኤ  e እ  o ኦ
@@ -27,7 +28,11 @@ const DIGRAPHS = {
 };
 
 /** Vowel letter → order offset within a row. */
-const ORDERS = { e: 0, u: 1, i: 2, a: 3, E: 4, o: 6, W: 7 };
+const ORDERS = { e: 0, u: 1, i: 2, a: 3, E: 4, o: 6 };
+
+/** Labialized ("wa") rows of the velars: ጐ ጒ ጓ ጔ ጕ etc. Offsets: e0 i2 a3 E4 (6th)5. */
+const LABIAL = { q: 0x1248, Q: 0x1258, k: 0x12b0, K: 0x12c0, g: 0x1310 };
+const LABIAL_ORDERS = { e: 0, i: 2, a: 3, E: 4 };
 
 const STANDALONE = { a: "አ", A: "ኣ", u: "ኡ", i: "ኢ", E: "ኤ", e: "እ", o: "ኦ" };
 const VOWEL_ROW = 0x12a0;
@@ -40,13 +45,17 @@ for (const [letter, base] of Object.entries(ROWS)) {
   for (let o = 0; o < 8; o++) CODE_INFO.set(base + o, [letter, o]);
 }
 for (let o = 0; o < 7; o++) CODE_INFO.set(VOWEL_ROW + o, ["'", o]);
+const LABIAL_INFO = new Map();
+for (const [letter, base] of Object.entries(LABIAL)) {
+  for (const o of [0, 2, 3, 4, 5]) LABIAL_INFO.set(base + o, [letter, o]);
+}
 
 const fromRow = (letter, order) =>
   String.fromCodePoint((letter === "'" ? VOWEL_ROW : ROWS[letter]) + order);
 
 /** Is `ch` a Latin key that this keymap handles? */
 export function isFidelKey(ch) {
-  return ch in ROWS || ch in ORDERS || ch in STANDALONE || ch in PUNCT || ch === "'";
+  return ch in ROWS || ch in ORDERS || ch in STANDALONE || ch in PUNCT || ch === "'" || ch === "W";
 }
 
 /**
@@ -60,9 +69,23 @@ export function applyKey(before, ch, state = {}) {
   const lastCp = before.codePointAt(before.length - 1);
   const head = before.slice(0, -1);
   const info = state.sep ? undefined : CODE_INFO.get(lastCp ?? -1);
-  const done = (text) => ({ text, state: { sep: false } });
+  const labial = state.sep ? undefined : LABIAL_INFO.get(lastCp ?? -1);
+  const done = (text, extra = {}) => ({ text, state: { sep: false, ...extra } });
 
   if (ch === "'") return { text: before, state: { sep: true } };
+
+  // "W" after a consonant → labialized form: gW → ጕ (then gWa → ጓ), lW → ሏ.
+  if (ch === "W" && info && info[1] === 5 && info[0] !== "'") {
+    const [letter] = info;
+    if (letter in LABIAL) return done(head + String.fromCodePoint(LABIAL[letter] + 5));
+    return done(head + fromRow(letter, 7), { wa: true });
+  }
+  // Vowel after a labialized velar: ጕ + a → ጓ, ጕ + e → ጐ, ...
+  if (labial && labial[1] === 5 && ch in LABIAL_ORDERS) {
+    return done(head + String.fromCodePoint(LABIAL[labial[0]] + LABIAL_ORDERS[ch]));
+  }
+  // "lWa": the a is already part of ሏ.
+  if (ch === "a" && state.wa) return done(before);
 
   if (ch in PUNCT) {
     if (ch === ":" && before.endsWith("፡")) return done(head + "።");

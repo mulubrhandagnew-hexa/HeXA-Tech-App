@@ -19,6 +19,25 @@ const PALETTES = {
 
 const FONT = '"Noto Sans Ethiopic", "Abyssinica SIL", "Nyala", system-ui, sans-serif';
 
+// Ge'ez hashtags, in the song's own language (Tigrinya / Amharic spellings).
+const TAGS = {
+  ti: {
+    guayla: "ጓይላ", eskista: "እስክስታ", chikchika: "ችክችካ", ballad: "ደርፊ",
+    krar: "ኽራር", masinko: "ዋጣ", washint: "ሸምበቆ", embilta: "እምብልታ",
+    tizita: "ትዝታ", bati: "ባቲ", ambassel: "ኣምባሰል", anchihoye: "ኣንቺሆየ", lang: "ትግርኛ",
+  },
+  am: {
+    guayla: "ጓይላ", eskista: "እስክስታ", chikchika: "ችክችካ", ballad: "ዘፈን",
+    krar: "ክራር", masinko: "ማሲንቆ", washint: "ዋሽንት", embilta: "እምቢልታ",
+    tizita: "ትዝታ", bati: "ባቲ", ambassel: "አምባሰል", anchihoye: "አንቺሆዬ", lang: "አማርኛ",
+  },
+};
+function songTags(lang, engine) {
+  const m = TAGS[lang] ?? TAGS.ti;
+  const scale = engine.scale.replace(/(Major|Minor)$/, "");
+  return ["tigtog", m.lang, m[engine.rhythm], m[engine.instrument], m[scale]].map((x) => `#${x}`).join(" ");
+}
+
 let engine; // shared across visits so audio state persists
 
 /**
@@ -304,6 +323,11 @@ export function renderStudio(view, h) {
   }
 
   // ------------------------------------------------------------ recording
+  // Re-tag the caption when the song's language changes after recording.
+  langSelect.addEventListener("change", () => {
+    if (!result.hidden) caption.value = [titleInput.value.trim(), songTags(langSelect.value, engine)].filter(Boolean).join("\n");
+  });
+
   const status = el("p", { class: "muted", role: "status" });
   const recordBtn = el("button", { class: "primary rec", type: "button", onclick: startRecording }, `● ${t("record")}`);
   const result = el("div", { class: "result", hidden: true });
@@ -371,7 +395,7 @@ export function renderStudio(view, h) {
         vid.addEventListener("timeupdate", () => { vid.currentTime = 0; }, { once: true });
       }
     }, { once: true });
-    const tags = `#tigtog #${engine.rhythm} #${engine.scale.replace(/(Major|Minor)$/, "").toLowerCase()}`;
+    const tags = songTags(langSelect.value, engine);
     caption.value = [titleInput.value.trim(), tags].filter(Boolean).join("\n");
     const postBtn = el("button", { class: "primary", type: "button", onclick: () => requireLogin(postSong) }, t("postSong"));
     async function postSong() {

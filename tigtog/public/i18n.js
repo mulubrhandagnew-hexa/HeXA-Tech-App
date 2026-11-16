@@ -35,7 +35,7 @@ const STRINGS = {
     loading: "Loading…",
     // studio
     studioTitle: "Music studio", studioIntro: "Make a song in Tigrinya or Amharic: pick a qenet and rhythm, write lyrics in ፊደል, then record a music video.",
-    songTitle: "Song title", qenet: "Scale (ቅኝት)", rhythm: "Rhythm", instrument: "Instrument", tempo: "Tempo",
+    songTitle: "Song title", qenet: "Scale (ቅኝት / ቕኒት)", rhythm: "Rhythm / dance", instrument: "Instrument", tempo: "Tempo",
     play: "Play", stop: "Stop", generate: "New melody", clear: "Clear",
     melody: "Melody", melodyHint: "Tap the grid to place notes. Rows are notes of the scale, low to high.",
     lyrics: "Lyrics", lyricsPlaceholder: "One line per verse line — shown karaoke-style in the video",
@@ -49,7 +49,7 @@ const STRINGS = {
     tizitaMajor: "Tizita major (ትዝታ)", tizitaMinor: "Tizita minor (ትዝታ)", batiMajor: "Bati major (ባቲ)",
     batiMinor: "Bati minor (ባቲ)", ambassel: "Ambassel (አምባሰል)", anchihoye: "Anchihoye (አንቺሆዬ)",
     guayla: "Guayla (ጓይላ) 6/8", eskista: "Eskista (እስክስታ) 6/8", chikchika: "Chikchika (ችክችካ)", ballad: "Slow ballad 4/4",
-    krar: "Krar (ክራር)", masinko: "Masinko (ማሲንቆ)", washint: "Washint (ዋሽንት)",
+    krar: "Krar (ክራር / ኽራር)", masinko: "Masinko / Chira-wata (ማሲንቆ / ጭራ-ዋጣ)", washint: "Washint / Shambeqo (ዋሽንት / ሸምበቆ)", embilta: "Embilta (እምብልታ)",
   },
 
   ti: {
@@ -83,8 +83,8 @@ const STRINGS = {
     fidelTyping: "ብፊደል ጽሓፍ", convertFidel: "Latin → ፊደል",
     fidelHint: "ብላቲን ፊደላት ጽሓፉ፦ selam → ሰላም፣ Ab → ኣብ፣ sha → ሻ፣ `amet → ዓመት፣ :: → ።",
     loading: "ይጽዓን ኣሎ…",
-    studioTitle: "ስቱድዮ ሙዚቃ", studioIntro: "ብትግርኛ ወይ ብአማርኛ ደርፊ ስርሑ፦ ቅኝትን ምትን ምረጹ፣ ግጥሚ ብፊደል ጽሓፉ፣ ድሕሪኡ ቪድዮ ክሊፕ ቅድሑ።",
-    songTitle: "ኣርእስቲ ደርፊ", qenet: "ቅኝት", rhythm: "ምት", instrument: "መሳርሒ ሙዚቃ", tempo: "ፍጥነት",
+    studioTitle: "ስቱድዮ ሙዚቃ", studioIntro: "ብትግርኛ ወይ ብአማርኛ ደርፊ ስርሑ፦ ቕኒትን ስዕስዒትን ምረጹ — ጓይላ፣ ኽራር፣ ጭራ-ዋጣ፣ ሸምበቆ፣ እምብልታ — ግጥሚ ብፊደል ጽሓፉ፣ ድሕሪኡ ቪድዮ ክሊፕ ቅድሑ።",
+    songTitle: "ኣርእስቲ ደርፊ", qenet: "ቕኒት", rhythm: "ስዕስዒት", instrument: "መሳርሒ ሙዚቃ", tempo: "ፍጥነት",
     play: "ኣጻውት", stop: "ደው ኣብል", generate: "ሓድሽ ዜማ", clear: "ኣጽሪ",
     melody: "ዜማ", melodyHint: "ኖታታት ንምቕማጥ ነቲ ሰንጠረዥ ጠውቑ። መስመራት ካብ ታሕቲ ናብ ላዕሊ ኖታታት ናይቲ ቅኝት እዮም።",
     lyrics: "ግጥሚ", lyricsPlaceholder: "ኣብ ነፍሲ ወከፍ መስመር ሓደ ሕንጻጽ — ኣብቲ ቪድዮ ከም ካራኦኬ ይረአ",
@@ -98,7 +98,7 @@ const STRINGS = {
     tizitaMajor: "ትዝታ (ዓቢ)", tizitaMinor: "ትዝታ (ንኡስ)", batiMajor: "ባቲ (ዓቢ)",
     batiMinor: "ባቲ (ንኡስ)", ambassel: "ኣምባሰል", anchihoye: "ኣንቺሆየ",
     guayla: "ጓይላ 6/8", eskista: "እስክስታ 6/8", chikchika: "ችክችካ", ballad: "ቀስ ዝበለ 4/4",
-    krar: "ክራር", masinko: "ማሲንቆ", washint: "ዋሽንት",
+    krar: "ኽራር", masinko: "ጭራ-ዋጣ (ዋጣ)", washint: "ሸምበቆ", embilta: "እምብልታ",
   },
 
   am: {
@@ -147,7 +147,7 @@ const STRINGS = {
     tizitaMajor: "ትዝታ (ሜጀር)", tizitaMinor: "ትዝታ (ማይነር)", batiMajor: "ባቲ (ሜጀር)",
     batiMinor: "ባቲ (ማይነር)", ambassel: "አምባሰል", anchihoye: "አንቺሆዬ",
     guayla: "ጓይላ 6/8", eskista: "እስክስታ 6/8", chikchika: "ችክችካ", ballad: "ቀስ ያለ 4/4",
-    krar: "ክራር", masinko: "ማሲንቆ", washint: "ዋሽንት",
+    krar: "ክራር", masinko: "ማሲንቆ", washint: "ዋሽንት", embilta: "እምቢልታ",
   },
 };
 
