@@ -14,6 +14,9 @@ Make and share **music and videos in Tigrinya (ትግርኛ) and Amharic (አማ
   ጓይላ መርዓ (wedding, 88 BPM), measured from reference recordings, plus a key
   selector and ±50¢ fine-tune so the beat can match a singer or krar that
   isn't at A440. See [docs/reference-analysis.md](docs/reference-analysis.md).
+- **A krar modelled on a real one:** a physically modelled plucked string
+  whose overtones, decay and range were matched to isolated notes from a
+  krar recording.
 - **Fidel typing** everywhere: type Latin, get Ge'ez (`selam` → ሰላም,
   `Ab` → ኣብ, `` `amet `` → ዓመት, `::` → ።). No special keyboard needed.
 - **Interface in ትግርኛ, አማርኛ and English.** Posts are tagged by language, and
@@ -31,7 +34,7 @@ stored on disk.
 ```bash
 cd tigtog
 npm install
-npm test          # 33 tests: service, HTTP API, Fidel keymap
+npm test          # 34 tests: service, HTTP API, Fidel keymap
 npm run dev       # http://localhost:3001 with live reload
 # or
 npm run build && npm start
@@ -81,6 +84,7 @@ src/
   api/server.ts          Express routes, uploads, static client, error mapping
   index.ts               bootstrap
 tools/analyze_reference.py  measure tempo, tuning, qenet and beat patterns of songs
+tools/analyze_timbre.py     measure a plucked instrument's harmonics and decay
 docs/reference-analysis.md  findings used to tune the rhythms
 public/
   app.js                 feed, profiles, upload, comments, routing

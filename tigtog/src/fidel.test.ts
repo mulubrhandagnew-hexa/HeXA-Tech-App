@@ -76,3 +76,27 @@ describe("Fidel phonetic typing", () => {
     expect(r.text).toBe("ሰ");
   });
 });
+
+describe("krar string model", () => {
+  it("renders finite, normalised audio at every studio pitch and sample rate", async () => {
+    // @ts-ignore -- client module without type declarations
+    const { renderKrar } = await import("../public/music.js");
+    for (const sr of [44100, 48000]) {
+      for (let midi = 40; midi <= 72; midi++) {
+        const f = 440 * Math.pow(2, (midi - 69) / 12);
+        const out: Float32Array = renderKrar(f, sr);
+        let peak = 0;
+        for (const v of out) {
+          expect(Number.isFinite(v)).toBe(true);
+          peak = Math.max(peak, Math.abs(v));
+        }
+        expect(peak).toBeCloseTo(1, 5);
+        // Still ringing after a second, quieter than the start.
+        const rms = (a: number, b: number) =>
+          Math.sqrt(out.subarray(a * sr, b * sr).reduce((s, v) => s + v * v, 0) / ((b - a) * sr));
+        expect(rms(1, 1.1)).toBeGreaterThan(0.005);
+        expect(rms(1, 1.1)).toBeLessThan(rms(0.02, 0.12));
+      }
+    }
+  });
+});

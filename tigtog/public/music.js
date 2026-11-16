@@ -61,6 +61,69 @@ export function rowToMidi(scale, row, root = rootFor("A")) {
   return root + 12 * Math.floor(row / s.length) + s[row % s.length];
 }
 
+/**
+ * Octave each melody voice sounds in, relative to the grid's notes.
+ * The krar is measured at 119-357 Hz in reference recordings (about B2-F4),
+ * so its grid (root F3-E4 + two octaves) is played an octave down.
+ */
+const OCTAVE = { krar: -12, masinko: 12, washint: 12, embilta: 12 };
+
+/**
+ * Krar model, calibrated on isolated notes from a krar recording:
+ * - pluck point ~1/4 of the string (varied 0.20-0.30 per note): 2nd
+ *   harmonic above the fundamental, a dip at the 4th;
+ * - partials decay ~22 dB/s (T60 ~2.7 s) and the note keeps its brightness
+ *   while it rings. Measured on this model: harmonics within ~2.5 dB of the
+ *   recording on average, decay -21.7 dB/s. See docs/reference-analysis.md.
+ */
+export const KRAR = { pluckPoint: 0.25, pluckSpread: 0.05, t60: 2.8, stretch: 0.05, brightness: 6, duration: 2.6 };
+
+/** Karplus-Strong plucked string, rendered to a mono Float32Array. */
+export function renderKrar(freq, sampleRate, opts = KRAR, rand = Math.random) {
+  const len = Math.floor(opts.duration * sampleRate);
+  const out = new Float32Array(len);
+  const period = sampleRate / freq;
+  const delay = period - opts.stretch; // loop filter adds `stretch` samples of delay
+  const n0 = Math.ceil(period);
+  // Excitation: one period of noise, low-passed at `brightness` × f0 (the
+  // softness of the plectrum; two one-pole passes, run circularly so the
+  // period has no seam), then a comb at the pluck point (x[n] - x[n - p·N]).
+  const exc = new Float32Array(n0);
+  for (let i = 0; i < n0; i++) exc[i] = rand() * 2 - 1;
+  const a = 1 - Math.exp((-2 * Math.PI * opts.brightness * freq) / sampleRate);
+  for (let pass = 0; pass < 2; pass++) {
+    let y = exc[n0 - 1];
+    for (let k = 0; k < 2 * n0; k++) { const i = k % n0; y += a * (exc[i] - y); if (k >= n0) exc[i] = y; }
+  }
+  // A player never plucks at exactly the same spot: vary it per note.
+  const point = opts.pluckPoint + (rand() * 2 - 1) * (opts.pluckSpread ?? 0);
+  const pp = Math.max(1, Math.round(point * period));
+  const shaped = new Float32Array(n0);
+  for (let i = 0; i < n0; i++) shaped[i] = exc[i] - (i >= pp ? exc[i - pp] : exc[n0 + i - pp] ?? 0);
+  // Remove DC so the loop doesn't drift.
+  let mean = 0;
+  for (const v of shaped) mean += v;
+  mean /= n0;
+  for (let i = 0; i < n0; i++) out[i] = shaped[i] - mean;
+  // Feedback loop: gain per period sets T60; small `stretch` = little damping
+  // of high harmonics, so the note stays bright.
+  const g = Math.pow(10, -3 / (opts.t60 * freq));
+  const S = opts.stretch;
+  // Start one sample in so the interpolation never reads before the buffer.
+  for (let n = n0 + 1; n < len; n++) {
+    const d = n - delay;
+    const i = Math.floor(d), fr = d - i;
+    const a = out[i] * (1 - fr) + out[i + 1] * fr; // fractional delay
+    const b = out[i - 1] * (1 - fr) + out[i] * fr;
+    out[n] = g * ((1 - S) * a + S * b);
+  }
+  // Normalise peak.
+  let peak = 0;
+  for (const v of out) peak = Math.max(peak, Math.abs(v));
+  if (peak > 0) for (let i = 0; i < len; i++) out[i] /= peak;
+  return out;
+}
+
 /** Velocity of a drum pattern at a step (0 = no hit). */
 const hit = (pattern, step) =>
   Array.isArray(pattern) ? (pattern.includes(step) ? 1 : 0) : (pattern[step] ?? 0);
@@ -206,6 +269,20 @@ export class MusicEngine {
   }
 
   // ------------------------------------------------------------ voices
+  /** Krar notes are rendered once per pitch and cached. */
+  _krarBuffer(freq) {
+    this._krarCache ??= new Map();
+    const key = Math.round(freq * 10);
+    let buf = this._krarCache.get(key);
+    if (!buf) {
+      const data = renderKrar(freq, this.ctx.sampleRate);
+      buf = this.ctx.createBuffer(1, data.length, this.ctx.sampleRate);
+      buf.copyToChannel(data, 0);
+      this._krarCache.set(key, buf);
+    }
+    return buf;
+  }
+
   _env(time, attack, peak, decay, sustainUntil) {
     const g = this.ctx.createGain();
     g.gain.setValueAtTime(0.0001, time);
@@ -242,7 +319,7 @@ export class MusicEngine {
   }
 
   _melody(midi, time, dur) {
-    const f = this.hz(midi + 12);
+    const f = this.hz(midi + OCTAVE[this.instrument]);
     const ctx = this.ctx;
     const out = ctx.createGain();
     out.connect(this.master);
@@ -252,19 +329,18 @@ export class MusicEngine {
     send.connect(this.reverb);
 
     if (this.instrument === "krar") {
-      // Plucked lyre: bright attack, filter closes quickly.
-      const g = this._env(time, 0.004, 0.32, Math.min(1.2, dur + 0.5));
-      const lp = ctx.createBiquadFilter();
-      lp.type = "lowpass";
-      lp.Q.value = 2;
-      lp.frequency.setValueAtTime(4200, time);
-      lp.frequency.exponentialRampToValueAtTime(700, time + 0.35);
-      lp.connect(g);
+      // Physically modelled plucked string (see _krarBuffer).
+      const src = ctx.createBufferSource();
+      src.buffer = this._krarBuffer(f);
+      const g = ctx.createGain();
+      g.gain.value = 0.22;
+      src.connect(g);
       g.connect(out);
-      const end = time + dur + 0.7;
-      this._osc("sawtooth", f, time, end, lp);
-      const o2 = this._osc("triangle", f * 2.003, time, end, lp);
-      o2.detune.value = 4;
+      src.start(time);
+      // Damp the string if the next note comes before it has rung out.
+      g.gain.setValueAtTime(0.22, time + Math.max(dur, 0.25) + 0.6);
+      g.gain.exponentialRampToValueAtTime(0.0001, time + Math.max(dur, 0.25) + 0.9);
+      src.stop(time + Math.max(dur, 0.25) + 0.95);
     } else if (this.instrument === "masinko") {
       // Bowed one-string fiddle: slow attack, nasal band, wide vibrato.
       const end = time + dur;
