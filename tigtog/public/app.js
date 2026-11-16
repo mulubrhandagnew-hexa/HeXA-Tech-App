@@ -1,15 +1,26 @@
 // Tigtog web client — no build step, no dependencies.
 // All user content is inserted with textContent / DOM APIs (never innerHTML).
+import { t, getLang, setLang, translateDom, UI_LANGS } from "./i18n.js";
+import { attachFidelInput } from "./fidel.js";
+import { renderStudio } from "./studio.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const view = $("#view");
+let cleanup = null; // teardown for the current page (e.g. studio audio/camera)
 
 // ------------------------------------------------------------------ state
 const store = {
   get token() { try { return localStorage.getItem("tigtog.token"); } catch { return null; } },
   set token(v) { try { v ? localStorage.setItem("tigtog.token", v) : localStorage.removeItem("tigtog.token"); } catch {} },
   me: null,
+  get fidel() { return pref("tigtog.fidel", getLang() !== "en" ? "1" : "0") === "1"; },
+  set fidel(v) { savePref("tigtog.fidel", v ? "1" : "0"); },
+  get feedLang() { return pref("tigtog.feedLang", ""); },
+  set feedLang(v) { savePref("tigtog.feedLang", v); },
 };
+
+function pref(key, fallback) { try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; } }
+function savePref(key, v) { try { localStorage.setItem(key, v); } catch {} }
 
 async function api(path, { method = "GET", body, headers = {}, raw = false } = {}) {
   const h = { ...headers };
@@ -104,11 +115,11 @@ function requireLogin(then) {
 function setAuthMode(mode) {
   authMode = mode;
   const signup = mode === "signup";
-  $("#auth-title").textContent = signup ? "Join Tigtog" : "Log in to Tigtog";
-  $("#auth-submit").textContent = signup ? "Create account" : "Log in";
+  $("#auth-title").textContent = t(signup ? "signupTitle" : "loginTitle");
+  $("#auth-submit").textContent = t(signup ? "createAccount" : "login");
   $("#display-row").hidden = !signup;
-  $("#auth-switch-text").textContent = signup ? "Have an account?" : "New here?";
-  $("#auth-switch").textContent = signup ? "Log in" : "Create an account";
+  $("#auth-switch-text").textContent = t(signup ? "haveAccount" : "newHere");
+  $("#auth-switch").textContent = t(signup ? "login" : "createAccount");
   $("#auth-form").password.autocomplete = signup ? "new-password" : "current-password";
 }
 $("#auth-switch").addEventListener("click", () => setAuthMode(authMode === "login" ? "signup" : "login"));
@@ -125,7 +136,7 @@ $("#auth-form").addEventListener("submit", async (e) => {
     store.me = r.user;
     $("#auth-dialog").close();
     f.reset();
-    toast(`Welcome, ${r.user.displayName}`);
+    toast(t("welcome", { name: r.user.displayName }));
     const next = afterAuth; afterAuth = null;
     next ? next() : route();
   } catch (err) {
@@ -144,16 +155,18 @@ async function logout() {
   try { await api("/api/auth/logout", { method: "POST" }); } catch {}
   store.token = null; store.me = null;
   location.hash = "#/";
-  toast("Logged out");
+  toast(t("loggedOut"));
 }
 
 // ----------------------------------------------------------------- upload
 const uploadForm = $("#upload-form");
 const preview = $("#upload-preview");
-$("#upload-btn").addEventListener("click", () => requireLogin(openUpload));
+$("#create-btn").addEventListener("click", () => $("#create-dialog").showModal());
+$("#open-upload").addEventListener("click", () => { $("#create-dialog").close(); requireLogin(openUpload); });
 
 function openUpload() {
   uploadForm.reset();
+  uploadForm.language.value = getLang() === "am" ? "am" : "ti";
   preview.hidden = true;
   preview.removeAttribute("src");
   $("#drop-hint").hidden = false;
@@ -176,20 +189,22 @@ uploadForm.addEventListener("submit", async (e) => {
   const file = uploadForm.file.files[0];
   if (!file) return;
   const btn = $("#upload-submit");
-  btn.disabled = true; btn.textContent = "Uploading…";
+  btn.disabled = true; btn.textContent = t("uploading");
   $("#upload-error").textContent = "";
   try {
     const type = file.type || (file.name.toLowerCase().endsWith(".mov") ? "video/quicktime" : "video/mp4");
     const { media } = await api("/api/media", { method: "POST", body: file, raw: true, headers: { "Content-Type": type } });
-    const { post } = await api("/api/posts", { method: "POST", body: { caption: uploadForm.caption.value, mediaId: media.id } });
+    const { post } = await api("/api/posts", { method: "POST", body: {
+      caption: uploadForm.caption.value, mediaId: media.id, language: uploadForm.language.value, kind: uploadForm.kind.value,
+    } });
     $("#upload-dialog").close();
-    toast("Posted!");
+    toast(t("posted"));
     location.hash = `#/u/${post.author.username}`;
     route();
   } catch (err) {
     $("#upload-error").textContent = err.message;
   } finally {
-    btn.disabled = false; btn.textContent = "Post";
+    btn.disabled = false; btn.textContent = t("post");
   }
 });
 
@@ -197,7 +212,7 @@ uploadForm.addEventListener("submit", async (e) => {
 let commentsPost = null;
 async function openComments(post, countEl) {
   commentsPost = { post, countEl };
-  $("#comments-list").replaceChildren(el("li", { class: "muted" }, "Loading…"));
+  $("#comments-list").replaceChildren(el("li", { class: "muted" }, t("loading")));
   $("#comments-dialog").showModal();
   await renderComments();
 }
@@ -205,10 +220,10 @@ async function openComments(post, countEl) {
 async function renderComments() {
   const { post, countEl } = commentsPost;
   const { comments } = await api(`/api/posts/${post.id}/comments`);
-  $("#comments-count").textContent = `${comments.length} comment${comments.length === 1 ? "" : "s"}`;
+  $("#comments-count").textContent = comments.length === 1 ? t("comment1") : t("comments", { n: comments.length });
   countEl.textContent = fmt(comments.length);
   const list = $("#comments-list");
-  if (!comments.length) return list.replaceChildren(el("li", { class: "muted" }, "No comments yet. Start the conversation."));
+  if (!comments.length) return list.replaceChildren(el("li", { class: "muted" }, t("noComments")));
   list.replaceChildren(...comments.map((c) => {
     const canDelete = store.me && (store.me.id === c.author.id || store.me.id === post.author.id);
     return el("li", {},
@@ -219,7 +234,7 @@ async function renderComments() {
       canDelete ? el("button", { class: "del", onclick: async () => {
         await api(`/api/comments/${c.id}`, { method: "DELETE" });
         renderComments();
-      } }, "Delete") : null);
+      } }, t("delete")) : null);
   }));
   list.scrollTop = list.scrollHeight;
 }
@@ -261,7 +276,7 @@ function slide(post) {
   const commentCount = el("span", {}, fmt(post.comments));
   const isMine = store.me?.id === post.author.id;
 
-  const likeBtn = el("button", { class: `action${post.likedByMe ? " liked" : ""}`, "aria-label": "Like", "aria-pressed": String(post.likedByMe) },
+  const likeBtn = el("button", { class: `action${post.likedByMe ? " liked" : ""}`, "aria-label": t("like"), "aria-pressed": String(post.likedByMe) },
     el("span", { class: "icon" }, "♥"), likeCount);
   likeBtn.addEventListener("click", () => requireLogin(async () => {
     const on = !likeBtn.classList.contains("liked");
@@ -274,13 +289,13 @@ function slide(post) {
   }));
 
   const followBtn = isMine ? null : el("button", { class: `follow-chip${post.author.followedByMe ? " on" : ""}` },
-    post.author.followedByMe ? "Following" : "Follow");
+    t(post.author.followedByMe ? "followingState" : "follow"));
   followBtn?.addEventListener("click", () => requireLogin(async () => {
     const on = !followBtn.classList.contains("on");
     try {
       await api(`/api/users/${post.author.username}/follow`, { method: on ? "POST" : "DELETE" });
       followBtn.classList.toggle("on", on);
-      followBtn.textContent = on ? "Following" : "Follow";
+      followBtn.textContent = t(on ? "followingState" : "follow");
     } catch (err) { toast(err.message); }
   }));
 
@@ -291,24 +306,27 @@ function slide(post) {
       el("div", {},
         el("a", { class: "author", href: `#/u/${post.author.username}` }, post.author.displayName, el("small", {}, `@${post.author.username} · ${timeAgo(post.createdAt)}`)),
         followBtn),
+      el("div", { class: "badges" },
+        post.kind === "music" ? el("span", { class: "badge music" }, `♫ ${t("music")}`) : null,
+        post.language !== "other" ? el("span", { class: "badge", lang: post.language }, t(post.language)) : null),
       post.caption ? el("p", { class: "caption" }, captionNodes(post.caption)) : null),
     el("div", { class: "actions" },
       likeBtn,
-      el("button", { class: "action", "aria-label": "Comments", onclick: () => openComments(post, commentCount) },
+      el("button", { class: "action", "aria-label": t("comments", { n: "" }).trim(), onclick: () => openComments(post, commentCount) },
         el("span", { class: "icon" }, "💬"), commentCount),
       el("button", { class: "action", "aria-label": "Share", onclick: async () => {
         const url = `${location.origin}/#/p/${post.id}`;
         try {
           if (navigator.share) await navigator.share({ title: "Tigtog", url });
-          else { await navigator.clipboard.writeText(url); toast("Link copied"); }
+          else { await navigator.clipboard.writeText(url); toast(t("linkCopied")); }
         } catch {}
-      } }, el("span", { class: "icon" }, "↗"), el("span", {}, "Share")),
-      el("button", { class: "action", "aria-label": "Toggle sound", onclick: (e) => {
+      } }, el("span", { class: "icon" }, "↗"), el("span", {}, t("share"))),
+      el("button", { class: "action", "aria-label": t("sound"), onclick: (e) => {
         muted = !muted;
         document.querySelectorAll(".slide video").forEach((v) => (v.muted = muted));
         document.querySelectorAll(".sound-icon").forEach((s) => (s.textContent = muted ? "🔇" : "🔊"));
         e.stopPropagation();
-      } }, el("span", { class: "icon sound-icon" }, muted ? "🔇" : "🔊"), el("span", {}, "Sound"))));
+      } }, el("span", { class: "icon sound-icon" }, muted ? "🔇" : "🔊"), el("span", {}, t("sound")))));
 
   video.addEventListener("click", () => {
     if (video.paused) { video.play().catch(() => {}); node.classList.remove("paused"); }
@@ -327,7 +345,7 @@ function slide(post) {
 
 async function renderFeed(endpoint, emptyState) {
   const feed = el("div", { class: "feed" });
-  view.replaceChildren(feed);
+  view.replaceChildren(langChips(), feed);
   let cursor = null;
   let loading = false;
   let done = false;
@@ -336,14 +354,16 @@ async function renderFeed(endpoint, emptyState) {
     if (loading || done) return;
     loading = true;
     try {
-      const q = cursor ? `?cursor=${encodeURIComponent(cursor)}` : "";
-      const page = await api(`${endpoint}${q}`);
+      const params = new URLSearchParams();
+      if (cursor) params.set("cursor", cursor);
+      if (store.feedLang) params.set("lang", store.feedLang);
+      const page = await api(`${endpoint}?${params}`);
       if (!page.posts.length && !feed.children.length) feed.replaceWith(emptyState());
       for (const p of page.posts) feed.append(slide(p));
       cursor = page.nextCursor;
       done = !cursor;
     } catch (err) {
-      if (!feed.children.length) feed.replaceWith(empty("Couldn't load the feed", err.message));
+      if (!feed.children.length) feed.replaceWith(empty(t("feedError"), err.message));
     } finally { loading = false; }
   }
   feed.addEventListener("scroll", () => {
@@ -365,13 +385,13 @@ function grid(posts) {
 }
 
 async function renderProfile(username) {
-  const page = el("div", { class: "page" }, el("p", { class: "muted" }, "Loading…"));
+  const page = el("div", { class: "page" }, el("p", { class: "muted" }, t("loading")));
   view.replaceChildren(page);
   let data, posts;
   try {
     [data, posts] = await Promise.all([api(`/api/users/${encodeURIComponent(username)}`), api(`/api/users/${encodeURIComponent(username)}/posts?limit=50`)]);
   } catch (err) {
-    return page.replaceChildren(empty("User not found", err.message));
+    return page.replaceChildren(empty(t("userNotFound"), err.message));
   }
   const u = data.user;
   const isMe = store.me?.id === u.id;
@@ -380,17 +400,17 @@ async function renderProfile(username) {
 
   const actions = isMe
     ? el("div", { style: "display:flex;gap:8px" },
-        el("button", { class: "secondary", onclick: () => editProfile(u) }, "Edit profile"),
-        el("button", { class: "secondary", onclick: logout }, "Log out"))
+        el("button", { class: "secondary", onclick: () => editProfile(u) }, t("editProfile")),
+        el("button", { class: "secondary", onclick: logout }, t("logout")))
     : el("button", { class: following ? "secondary" : "primary", onclick: (e) => requireLogin(async () => {
         try {
           const r = await api(`/api/users/${u.username}/follow`, { method: following ? "DELETE" : "POST" });
           following = r.followedByMe;
           followers.textContent = fmt(r.user.followers);
           e.target.className = following ? "secondary" : "primary";
-          e.target.textContent = following ? "Following" : "Follow";
+          e.target.textContent = t(following ? "followingState" : "follow");
         } catch (err) { toast(err.message); }
-      }) }, following ? "Following" : "Follow");
+      }) }, t(following ? "followingState" : "follow"));
 
   page.replaceChildren(
     el("div", { class: "profile-head" },
@@ -399,23 +419,25 @@ async function renderProfile(username) {
         el("h2", { style: "margin:0" }, u.displayName),
         el("p", { class: "muted", style: "margin:2px 0 8px" }, `@${u.username}`),
         el("div", { class: "stats" },
-          el("span", {}, el("b", {}, fmt(u.following)), " following"),
-          el("span", {}, followers, " followers"),
-          el("span", {}, el("b", {}, fmt(u.posts)), " videos")),
+          el("span", {}, el("b", {}, fmt(u.following)), " ", t("followingCount")),
+          el("span", {}, followers, " ", t("followers")),
+          el("span", {}, el("b", {}, fmt(u.posts)), " ", t("videos"))),
         u.bio ? el("p", {}, u.bio) : null),
       el("div", { style: "margin-left:auto" }, actions)),
     posts.posts.length ? grid(posts.posts)
-      : empty(isMe ? "Post your first video" : "No videos yet", isMe ? "Tap ＋ to upload." : "Check back later.",
-        isMe ? el("button", { class: "primary", onclick: openUpload }, "Upload") : null));
+      : empty(t(isMe ? "postFirst" : "noVideosUser"), t(isMe ? "tapPlus" : "checkBack"),
+        isMe ? el("div", { class: "row center" },
+          el("a", { class: "primary", href: "#/studio" }, `♫ ${t("makeSong")}`),
+          el("button", { class: "secondary", onclick: openUpload }, t("upload"))) : null));
 }
 
 function editProfile(u) {
-  const displayName = prompt("Display name", u.displayName);
+  const displayName = prompt(t("displayName"), u.displayName);
   if (displayName === null) return;
-  const bio = prompt("Bio (160 characters)", u.bio);
+  const bio = prompt(t("bioPrompt"), u.bio);
   if (bio === null) return;
   api("/api/me", { method: "PATCH", body: { displayName, bio: bio.slice(0, 160) } })
-    .then((r) => { store.me = r.user; route(); toast("Profile updated"); })
+    .then((r) => { store.me = r.user; route(); toast(t("profileUpdated")); })
     .catch((err) => toast(err.message));
 }
 
@@ -425,7 +447,7 @@ async function renderPost(id) {
     const feed = el("div", { class: "feed" }, slide(post));
     view.replaceChildren(feed);
   } catch (err) {
-    view.replaceChildren(empty("Video not found", err.message));
+    view.replaceChildren(empty(t("videoNotFound"), err.message));
   }
 }
 
@@ -433,25 +455,26 @@ async function renderTag(tag) {
   const page = el("div", { class: "page" });
   view.replaceChildren(page);
   const r = await api(`/api/tags/${encodeURIComponent(tag)}?limit=50`).catch(() => ({ posts: [] }));
-  page.append(el("h2", {}, `#${tag}`), el("p", { class: "muted" }, `${r.posts.length} videos`),
-    r.posts.length ? grid(r.posts) : empty("Nothing here yet", "Be the first to use this hashtag."));
+  page.append(el("h2", {}, `#${tag}`), el("p", { class: "muted" }, t("videosCount", { n: r.posts.length })),
+    r.posts.length ? grid(r.posts) : empty(t("nothingHere"), t("firstHashtag")));
 }
 
 async function renderSearch(q) {
-  const input = el("input", { type: "search", value: q, placeholder: "Search people, captions", style: "width:100%;padding:12px 14px;border-radius:999px;border:0;background:var(--surface-2)", "aria-label": "Search" });
+  const input = el("input", { type: "search", value: q, placeholder: t("searchPlaceholder"), style: "width:100%;padding:12px 14px;border-radius:999px;border:0;background:var(--surface-2)", "aria-label": "Search" });
   const form = el("form", { onsubmit: (e) => { e.preventDefault(); location.hash = `#/search?q=${encodeURIComponent(input.value)}`; } }, input);
-  const page = el("div", { class: "page" }, form);
+  fidelField(input);
+  const page = el("div", { class: "page" }, form, el("div", { class: "row", style: "margin-top:8px" }, fidelToggle()));
   view.replaceChildren(page);
   if (!q) return input.focus();
   const r = await api(`/api/search?q=${encodeURIComponent(q)}`);
   page.append(
-    el("h3", {}, "People"),
+    el("h3", {}, t("people")),
     r.users.length ? el("div", {}, r.users.map((u) => el("a", { class: "user-row", href: `#/u/${u.username}` },
       el("div", { class: "avatar sm" }, initial(u)),
-      el("div", {}, el("b", {}, u.displayName), el("div", { class: "muted" }, `@${u.username} · ${fmt(u.followers)} followers`)))))
-      : el("p", { class: "muted" }, "No people found."),
-    el("h3", {}, "Videos"),
-    r.posts.length ? grid(r.posts) : el("p", { class: "muted" }, "No videos found."));
+      el("div", {}, el("b", {}, u.displayName), el("div", { class: "muted" }, `@${u.username} · ${fmt(u.followers)} ${t("followers")}`)))))
+      : el("p", { class: "muted" }, t("noPeople")),
+    el("h3", {}, t("videos")),
+    r.posts.length ? grid(r.posts) : el("p", { class: "muted" }, t("noVideos")));
 }
 
 // ----------------------------------------------------------------- router
@@ -461,21 +484,33 @@ function setTab(tab) {
 
 async function route() {
   document.querySelectorAll(".slide").forEach((s) => io.unobserve(s));
+  if (cleanup) { cleanup(); cleanup = null; }
   const hash = location.hash.slice(1) || "/";
   const [path, query = ""] = hash.split("?");
   const parts = path.split("/").filter(Boolean).map(decodeURIComponent);
   setTab(parts.length === 0 ? "for-you" : parts[0] === "following" ? "following" : "");
+  document.querySelectorAll(".bottombar [data-nav]").forEach((a) =>
+    a.classList.toggle("active", a.dataset.nav === (parts[0] === undefined ? "home" : parts[0] === "u" && store.me?.username === parts[1] ? "me" : parts[0])));
+  document.body.classList.toggle("on-feed", parts.length === 0 || parts[0] === "following" || parts[0] === "p");
 
   switch (parts[0]) {
     case undefined:
-      return renderFeed("/api/feed/for-you", () => empty("No videos yet", "Be the first to post on Tigtog.",
-        el("button", { class: "primary", onclick: () => requireLogin(openUpload) }, "Upload a video")));
+      return renderFeed("/api/feed/for-you", () => empty(t("noVideosYet"), t("beFirst"),
+        el("div", { class: "row center" },
+          el("a", { class: "primary", href: "#/studio" }, `♫ ${t("makeSong")}`),
+          el("button", { class: "secondary", onclick: () => requireLogin(openUpload) }, t("uploadVideo")))));
     case "following":
       if (!store.me) {
-        return view.replaceChildren(empty("See videos from people you follow", "Log in to get your Following feed.",
-          el("button", { class: "primary", onclick: () => requireLogin(route) }, "Log in")));
+        return view.replaceChildren(empty(t("followingLoginTitle"), t("followingLoginText"),
+          el("button", { class: "primary", onclick: () => requireLogin(route) }, t("login"))));
       }
-      return renderFeed("/api/feed/following", () => empty("Your Following feed is empty", "Follow creators from the For you feed and their videos will show up here."));
+      return renderFeed("/api/feed/following", () => empty(t("followingEmptyTitle"), t("followingEmptyText")));
+    case "studio":
+      cleanup = renderStudio(view, {
+        api, store, el, toast, requireLogin, fidelField,
+        navigate: (hash) => { location.hash = hash; },
+      });
+      return;
     case "me":
       if (!store.me) return requireLogin(() => { location.hash = `#/u/${store.me.username}`; });
       location.hash = `#/u/${store.me.username}`;
@@ -484,7 +519,7 @@ async function route() {
     case "p": return renderPost(parts[1] ?? "");
     case "tag": return renderTag(parts[1] ?? "");
     case "search": return renderSearch(new URLSearchParams(query).get("q") ?? "");
-    default: return view.replaceChildren(empty("Page not found", "That link doesn't go anywhere."));
+    default: return view.replaceChildren(empty(t("notFound"), t("notFoundText")));
   }
 }
 
@@ -492,6 +527,54 @@ $("#search-form").addEventListener("submit", (e) => {
   e.preventDefault();
   location.hash = `#/search?q=${encodeURIComponent($("#search-input").value)}`;
 });
+
+// ------------------------------------------------------- language & fidel
+/** Feed filter: All / ትግርኛ / አማርኛ. */
+function langChips() {
+  const chips = el("div", { class: "lang-chips", role: "group", "aria-label": t("language") });
+  for (const [v, key] of [["", "all"], ["ti", "ti"], ["am", "am"]]) {
+    chips.append(el("button", {
+      type: "button", class: store.feedLang === v ? "on" : "", "aria-pressed": String(store.feedLang === v),
+      onclick: () => { store.feedLang = v; route(); },
+    }, t(key)));
+  }
+  return chips;
+}
+
+function fidelField(field) {
+  attachFidelInput(field, () => store.fidel);
+  return field;
+}
+
+/** A toggle for phonetic ፊደል typing; all toggles on the page stay in sync. */
+function fidelToggle() {
+  const b = el("button", { type: "button", class: "fidel-toggle", title: t("fidelHint"), onclick: () => {
+    store.fidel = !store.fidel;
+    syncFidelToggles();
+  } });
+  syncFidelToggles([b]);
+  return b;
+}
+function syncFidelToggles(list = document.querySelectorAll(".fidel-toggle")) {
+  for (const b of list) {
+    b.setAttribute("aria-pressed", String(store.fidel));
+    b.textContent = `${store.fidel ? "✓ " : ""}${t("fidelTyping")}`;
+  }
+}
+
+function applyLanguage() {
+  translateDom();
+  setAuthMode(authMode);
+  syncFidelToggles();
+  for (const slot of document.querySelectorAll(".fidel-slot")) slot.replaceChildren(fidelToggle());
+}
+
+const langSelect = $("#ui-lang");
+for (const [code, name] of UI_LANGS) langSelect.append(el("option", { value: code, selected: code === getLang() }, name));
+langSelect.addEventListener("change", () => { setLang(langSelect.value); applyLanguage(); route(); });
+
+document.querySelectorAll(".fidel-able").forEach(fidelField);
+applyLanguage();
 
 window.addEventListener("hashchange", route);
 await loadMe();

@@ -1,0 +1,192 @@
+// Interface strings in English, Tigrinya (ትግርኛ) and Amharic (አማርኛ).
+// Translations should be reviewed by native speakers before launch.
+
+const STRINGS = {
+  en: {
+    forYou: "For you", following: "Following", home: "Home", search: "Search", create: "Create",
+    studio: "Studio", me: "Me", searchPlaceholder: "Search people, captions",
+    login: "Log in", signup: "Sign up", loginTitle: "Log in to Tigtog", signupTitle: "Join Tigtog",
+    username: "Username", displayName: "Display name", password: "Password",
+    newHere: "New here?", haveAccount: "Have an account?", createAccount: "Create an account",
+    welcome: "Welcome, {name}",
+    postVideo: "Post a video", chooseVideo: "Choose an MP4, WebM or MOV video", caption: "Caption",
+    captionPlaceholder: "Say something… add #hashtags", language: "Language", kind: "Type",
+    video: "Video", music: "Music", post: "Post", uploading: "Uploading…", posted: "Posted!",
+    comments: "{n} comments", comment1: "1 comment", noComments: "No comments yet. Start the conversation.",
+    addComment: "Add a comment…", send: "Send", delete: "Delete",
+    like: "Like", share: "Share", sound: "Sound", linkCopied: "Link copied",
+    follow: "Follow", followingState: "Following", followers: "followers", followingCount: "following",
+    videos: "videos", editProfile: "Edit profile", logout: "Log out", loggedOut: "Logged out",
+    profileUpdated: "Profile updated", bioPrompt: "Bio (160 characters)",
+    noVideosYet: "No videos yet", beFirst: "Be the first to post on Tigtog.", uploadVideo: "Upload a video",
+    makeSong: "Make a song",
+    followingEmptyTitle: "Your Following feed is empty",
+    followingEmptyText: "Follow creators from the For you feed and their videos will show up here.",
+    followingLoginTitle: "See videos from people you follow", followingLoginText: "Log in to get your Following feed.",
+    notFound: "Page not found", notFoundText: "That link doesn't go anywhere.",
+    userNotFound: "User not found", videoNotFound: "Video not found", feedError: "Couldn't load the feed",
+    postFirst: "Post your first video", tapPlus: "Tap ＋ to create or upload.",
+    noVideosUser: "No videos yet", checkBack: "Check back later.", upload: "Upload",
+    people: "People", noPeople: "No people found.", noVideos: "No videos found.",
+    nothingHere: "Nothing here yet", firstHashtag: "Be the first to use this hashtag.", videosCount: "{n} videos",
+    all: "All", ti: "ትግርኛ", am: "አማርኛ", other: "Other",
+    fidelTyping: "ፊደል typing", convertFidel: "Latin → ፊደል",
+    fidelHint: "Type Latin letters: selam → ሰላም, Ab → ኣብ, sha → ሻ, `amet → ዓመት, :: → ።",
+    loading: "Loading…",
+    // studio
+    studioTitle: "Music studio", studioIntro: "Make a song in Tigrinya or Amharic: pick a qenet and rhythm, write lyrics in ፊደል, then record a music video.",
+    songTitle: "Song title", qenet: "Scale (ቅኝት)", rhythm: "Rhythm", instrument: "Instrument", tempo: "Tempo",
+    play: "Play", stop: "Stop", generate: "New melody", clear: "Clear",
+    melody: "Melody", melodyHint: "Tap the grid to place notes. Rows are notes of the scale, low to high.",
+    lyrics: "Lyrics", lyricsPlaceholder: "One line per verse line — shown karaoke-style in the video",
+    background: "Background", animated: "Animated", camera: "Camera",
+    vocals: "Record my voice (mic)", headphones: "Use headphones so the mic doesn't pick up the beat twice.",
+    length: "Length", bars: "{n} bars", record: "Record music video", recording: "Recording… {s}s left",
+    preview: "Preview", postSong: "Post song", retake: "Record again", posting: "Posting…",
+    cameraDenied: "Camera or microphone permission was denied.",
+    recordUnsupported: "This browser can't record video. Try Chrome, Edge, Firefox or Safari 14.1+.",
+    loginToPost: "Log in to post your song.",
+    tizitaMajor: "Tizita major (ትዝታ)", tizitaMinor: "Tizita minor (ትዝታ)", batiMajor: "Bati major (ባቲ)",
+    batiMinor: "Bati minor (ባቲ)", ambassel: "Ambassel (አምባሰል)", anchihoye: "Anchihoye (አንቺሆዬ)",
+    guayla: "Guayla (ጓይላ) 6/8", eskista: "Eskista (እስክስታ) 6/8", chikchika: "Chikchika (ችክችካ)", ballad: "Slow ballad 4/4",
+    krar: "Krar (ክራር)", masinko: "Masinko (ማሲንቆ)", washint: "Washint (ዋሽንት)",
+  },
+
+  ti: {
+    forYou: "ንዓኹም", following: "ዝኽተሎም", home: "ቀንዲ ገጽ", search: "ድለ", create: "ፍጠር",
+    studio: "ስቱድዮ", me: "ኣነ", searchPlaceholder: "ሰባት ወይ ጽሑፋት ድለዩ",
+    login: "እቶ", signup: "ተመዝገብ", loginTitle: "ናብ Tigtog እቶ", signupTitle: "ኣብ Tigtog ተመዝገቡ",
+    username: "ናይ ተጠቃሚ ስም", displayName: "ዝረአ ስም", password: "መሕለፊ ቃል",
+    newHere: "ሓድሽ ዲኹም?", haveAccount: "ሕሳብ ኣለኩም?", createAccount: "ሕሳብ ክፈቱ",
+    welcome: "እንቋዕ ብደሓን መጻእኩም፣ {name}",
+    postVideo: "ቪድዮ ለጥፉ", chooseVideo: "MP4፣ WebM ወይ MOV ቪድዮ ምረጹ", caption: "መግለጺ ጽሑፍ",
+    captionPlaceholder: "ገለ ጽሓፉ… #ሃሽታግ ወስኹ", language: "ቋንቋ", kind: "ዓይነት",
+    video: "ቪድዮ", music: "ሙዚቃ", post: "ኣሕትም", uploading: "ይጽዓን ኣሎ…", posted: "ተለጢፉ!",
+    comments: "{n} ርእይቶታት", comment1: "1 ርእይቶ", noComments: "ክሳብ ሕጂ ርእይቶ የለን። ንስኹም ጀምሩ።",
+    addComment: "ርእይቶ ጽሓፉ…", send: "ስደድ", delete: "ደምስስ",
+    like: "ፍተው", share: "ኣካፍል", sound: "ድምጺ", linkCopied: "ሊንክ ተቐዲሑ",
+    follow: "ተኸተል", followingState: "ትኽተሉ ኣለኹም", followers: "ተኸተልቲ", followingCount: "ዝኽተሎም",
+    videos: "ቪድዮታት", editProfile: "መግለጺ ኣመዓራሪ", logout: "ውጻእ", loggedOut: "ወጺእኩም ኣለኹም",
+    profileUpdated: "መግለጺ ተመዓራርዩ", bioPrompt: "ብዛዕባኹም (160 ፊደላት)",
+    noVideosYet: "ክሳብ ሕጂ ቪድዮ የለን", beFirst: "ኣብ Tigtog ቀዳማይ ዝለጥፍ ኩኑ።", uploadVideo: "ቪድዮ ጸዓኑ",
+    makeSong: "ደርፊ ስርሑ",
+    followingEmptyTitle: "ዝኽተልዎም ሰባት ቪድዮ የብሎምን",
+    followingEmptyText: "ካብ ንዓኹም ዝብል ገጽ ፈጠርቲ ተኸተሉ፣ ቪድዮታቶም ኣብዚ ክረኣዩ እዮም።",
+    followingLoginTitle: "ናይ እትኽተልዎም ሰባት ቪድዮታት ርኣዩ", followingLoginText: "ንምርኣይ እተዉ።",
+    notFound: "እዚ ገጽ ኣይተረኽበን", notFoundText: "እዚ ሊንክ ናብ ዝኾነ ቦታ ኣየብጽሕን።",
+    userNotFound: "ተጠቃሚ ኣይተረኽበን", videoNotFound: "ቪድዮ ኣይተረኽበን", feedError: "ቪድዮታት ክጽዓኑ ኣይከኣሉን",
+    postFirst: "ቀዳማይ ቪድዮኹም ለጥፉ", tapPlus: "ንምፍጣር ወይ ንምጽዓን ＋ ጠውቑ።",
+    noVideosUser: "ክሳብ ሕጂ ቪድዮ የለን", checkBack: "ጸኒሕኩም ተመለሱ።", upload: "ጸዓን",
+    people: "ሰባት", noPeople: "ሰብ ኣይተረኽበን።", noVideos: "ቪድዮ ኣይተረኽበን።",
+    nothingHere: "ክሳብ ሕጂ ዋላ ሓንቲ የለን", firstHashtag: "ነዚ ሃሽታግ ቀዳማይ ተጠቐምቲ ኩኑ።", videosCount: "{n} ቪድዮታት",
+    all: "ኩሉ", ti: "ትግርኛ", am: "አማርኛ", other: "ካልእ",
+    fidelTyping: "ብፊደል ጽሓፍ", convertFidel: "Latin → ፊደል",
+    fidelHint: "ብላቲን ፊደላት ጽሓፉ፦ selam → ሰላም፣ Ab → ኣብ፣ sha → ሻ፣ `amet → ዓመት፣ :: → ።",
+    loading: "ይጽዓን ኣሎ…",
+    studioTitle: "ስቱድዮ ሙዚቃ", studioIntro: "ብትግርኛ ወይ ብአማርኛ ደርፊ ስርሑ፦ ቅኝትን ምትን ምረጹ፣ ግጥሚ ብፊደል ጽሓፉ፣ ድሕሪኡ ቪድዮ ክሊፕ ቅድሑ።",
+    songTitle: "ኣርእስቲ ደርፊ", qenet: "ቅኝት", rhythm: "ምት", instrument: "መሳርሒ ሙዚቃ", tempo: "ፍጥነት",
+    play: "ኣጻውት", stop: "ደው ኣብል", generate: "ሓድሽ ዜማ", clear: "ኣጽሪ",
+    melody: "ዜማ", melodyHint: "ኖታታት ንምቕማጥ ነቲ ሰንጠረዥ ጠውቑ። መስመራት ካብ ታሕቲ ናብ ላዕሊ ኖታታት ናይቲ ቅኝት እዮም።",
+    lyrics: "ግጥሚ", lyricsPlaceholder: "ኣብ ነፍሲ ወከፍ መስመር ሓደ ሕንጻጽ — ኣብቲ ቪድዮ ከም ካራኦኬ ይረአ",
+    background: "ድሕረ ባይታ", animated: "ተንቀሳቓሲ", camera: "ካሜራ",
+    vocals: "ድምጸይ ቅዳሕ (ማይክሮፎን)", headphones: "ማይክሮፎን ነቲ ምት ደጊሙ ከይቀድሖ ኣብ እዝንኹም ዝግበር መስምዒ ተጠቐሙ።",
+    length: "ንውሓት", bars: "{n} ባራት", record: "ቪድዮ ክሊፕ ቅዳሕ", recording: "ይቕዳሕ ኣሎ… {s} ካልኢት ተሪፉ",
+    preview: "ቅድመ ርእይቶ", postSong: "ደርፊ ለጥፍ", retake: "ደጊምካ ቅዳሕ", posting: "ይለጠፍ ኣሎ…",
+    cameraDenied: "ፍቓድ ካሜራ ወይ ማይክሮፎን ተኸልኪሉ።",
+    recordUnsupported: "እዚ ብራውዘር ቪድዮ ክቐድሕ ኣይክእልን። Chrome፣ Edge፣ Firefox ወይ Safari ፈትኑ።",
+    loginToPost: "ደርፍኹም ንምልጣፍ እተዉ።",
+    tizitaMajor: "ትዝታ (ዓቢ)", tizitaMinor: "ትዝታ (ንኡስ)", batiMajor: "ባቲ (ዓቢ)",
+    batiMinor: "ባቲ (ንኡስ)", ambassel: "ኣምባሰል", anchihoye: "ኣንቺሆየ",
+    guayla: "ጓይላ 6/8", eskista: "እስክስታ 6/8", chikchika: "ችክችካ", ballad: "ቀስ ዝበለ 4/4",
+    krar: "ክራር", masinko: "ማሲንቆ", washint: "ዋሽንት",
+  },
+
+  am: {
+    forYou: "ለእርስዎ", following: "የምከተላቸው", home: "ዋና ገጽ", search: "ፈልግ", create: "ፍጠር",
+    studio: "ስቱዲዮ", me: "እኔ", searchPlaceholder: "ሰዎችን ወይም ጽሑፎችን ይፈልጉ",
+    login: "ግባ", signup: "ተመዝገብ", loginTitle: "ወደ Tigtog ይግቡ", signupTitle: "Tigtog ላይ ይመዝገቡ",
+    username: "የተጠቃሚ ስም", displayName: "የሚታይ ስም", password: "የይለፍ ቃል",
+    newHere: "አዲስ ነዎት?", haveAccount: "መለያ አለዎት?", createAccount: "መለያ ይክፈቱ",
+    welcome: "እንኳን ደህና መጡ፣ {name}",
+    postVideo: "ቪዲዮ ይለጥፉ", chooseVideo: "MP4፣ WebM ወይም MOV ቪዲዮ ይምረጡ", caption: "መግለጫ ጽሑፍ",
+    captionPlaceholder: "የሆነ ነገር ይጻፉ… #ሃሽታግ ያክሉ", language: "ቋንቋ", kind: "ዓይነት",
+    video: "ቪዲዮ", music: "ሙዚቃ", post: "አትም", uploading: "በመጫን ላይ…", posted: "ተለጥፏል!",
+    comments: "{n} አስተያየቶች", comment1: "1 አስተያየት", noComments: "እስካሁን አስተያየት የለም። እርስዎ ይጀምሩ።",
+    addComment: "አስተያየት ይጻፉ…", send: "ላክ", delete: "ሰርዝ",
+    like: "ውደድ", share: "አጋራ", sound: "ድምፅ", linkCopied: "ሊንኩ ተቀድቷል",
+    follow: "ተከተል", followingState: "እየተከተሉ ነው", followers: "ተከታዮች", followingCount: "የሚከተላቸው",
+    videos: "ቪዲዮዎች", editProfile: "መገለጫ ያስተካክሉ", logout: "ውጣ", loggedOut: "ወጥተዋል",
+    profileUpdated: "መገለጫው ተስተካክሏል", bioPrompt: "ስለ እርስዎ (160 ፊደላት)",
+    noVideosYet: "እስካሁን ቪዲዮ የለም", beFirst: "Tigtog ላይ የመጀመሪያው ለጣፊ ይሁኑ።", uploadVideo: "ቪዲዮ ይጫኑ",
+    makeSong: "ዘፈን ይስሩ",
+    followingEmptyTitle: "የሚከተሏቸው ሰዎች ቪዲዮ የላቸውም",
+    followingEmptyText: "ከ«ለእርስዎ» ገጽ ፈጣሪዎችን ይከተሉ፤ ቪዲዮዎቻቸው እዚህ ይታያሉ።",
+    followingLoginTitle: "የሚከተሏቸውን ሰዎች ቪዲዮዎች ይመልከቱ", followingLoginText: "ለማየት ይግቡ።",
+    notFound: "ገጹ አልተገኘም", notFoundText: "ይህ ሊንክ የትም አያደርስም።",
+    userNotFound: "ተጠቃሚው አልተገኘም", videoNotFound: "ቪዲዮው አልተገኘም", feedError: "ቪዲዮዎቹን መጫን አልተቻለም",
+    postFirst: "የመጀመሪያ ቪዲዮዎን ይለጥፉ", tapPlus: "ለመፍጠር ወይም ለመጫን ＋ን ይንኩ።",
+    noVideosUser: "እስካሁን ቪዲዮ የለም", checkBack: "ቆይተው ይመለሱ።", upload: "ጫን",
+    people: "ሰዎች", noPeople: "ሰው አልተገኘም።", noVideos: "ቪዲዮ አልተገኘም።",
+    nothingHere: "እስካሁን ምንም የለም", firstHashtag: "ይህንን ሃሽታግ የመጀመሪያው ተጠቃሚ ይሁኑ።", videosCount: "{n} ቪዲዮዎች",
+    all: "ሁሉም", ti: "ትግርኛ", am: "አማርኛ", other: "ሌላ",
+    fidelTyping: "በፊደል ጻፍ", convertFidel: "Latin → ፊደል",
+    fidelHint: "በላቲን ፊደላት ይጻፉ፦ selam → ሰላም፣ Ab → ኣብ፣ sha → ሻ፣ `amet → ዓመት፣ :: → ።",
+    loading: "በመጫን ላይ…",
+    studioTitle: "የሙዚቃ ስቱዲዮ", studioIntro: "በትግርኛ ወይም በአማርኛ ዘፈን ይስሩ፦ ቅኝትና ምት ይምረጡ፣ ግጥሙን በፊደል ይጻፉ፣ ከዚያ የሙዚቃ ቪዲዮ ይቅዱ።",
+    songTitle: "የዘፈኑ ርዕስ", qenet: "ቅኝት", rhythm: "ምት", instrument: "የሙዚቃ መሣሪያ", tempo: "ፍጥነት",
+    play: "አጫውት", stop: "አቁም", generate: "አዲስ ዜማ", clear: "አጽዳ",
+    melody: "ዜማ", melodyHint: "ኖታዎችን ለማስቀመጥ ሰንጠረዡን ይንኩ። ረድፎቹ ከታች ወደ ላይ የቅኝቱ ኖታዎች ናቸው።",
+    lyrics: "ግጥም", lyricsPlaceholder: "በእያንዳንዱ መስመር አንድ ስንኝ — በቪዲዮው ላይ እንደ ካራኦኬ ይታያል",
+    background: "ዳራ", animated: "ተንቀሳቃሽ", camera: "ካሜራ",
+    vocals: "ድምፄን ቅዳ (ማይክሮፎን)", headphones: "ማይክሮፎኑ ምቱን ደግሞ እንዳይቀዳ የጆሮ ማዳመጫ ይጠቀሙ።",
+    length: "ርዝመት", bars: "{n} ባሮች", record: "የሙዚቃ ቪዲዮ ቅዳ", recording: "በመቅዳት ላይ… {s} ሰከንድ ቀረ",
+    preview: "ቅድመ እይታ", postSong: "ዘፈኑን ለጥፍ", retake: "እንደገና ቅዳ", posting: "በመለጠፍ ላይ…",
+    cameraDenied: "የካሜራ ወይም የማይክሮፎን ፈቃድ ተከልክሏል።",
+    recordUnsupported: "ይህ ብራውዘር ቪዲዮ መቅዳት አይችልም። Chrome፣ Edge፣ Firefox ወይም Safari ይሞክሩ።",
+    loginToPost: "ዘፈንዎን ለመለጠፍ ይግቡ።",
+    tizitaMajor: "ትዝታ (ሜጀር)", tizitaMinor: "ትዝታ (ማይነር)", batiMajor: "ባቲ (ሜጀር)",
+    batiMinor: "ባቲ (ማይነር)", ambassel: "አምባሰል", anchihoye: "አንቺሆዬ",
+    guayla: "ጓይላ 6/8", eskista: "እስክስታ 6/8", chikchika: "ችክችካ", ballad: "ቀስ ያለ 4/4",
+    krar: "ክራር", masinko: "ማሲንቆ", washint: "ዋሽንት",
+  },
+};
+
+export const UI_LANGS = [
+  ["ti", "ትግርኛ"],
+  ["am", "አማርኛ"],
+  ["en", "English"],
+];
+
+function initialLang() {
+  try {
+    const saved = localStorage.getItem("tigtog.lang");
+    if (saved && saved in STRINGS) return saved;
+  } catch {}
+  const nav = (navigator.language || "").slice(0, 2);
+  return nav in STRINGS ? nav : "en";
+}
+
+let lang = initialLang();
+
+export function getLang() { return lang; }
+
+export function setLang(next) {
+  if (!(next in STRINGS)) return;
+  lang = next;
+  try { localStorage.setItem("tigtog.lang", next); } catch {}
+  document.documentElement.lang = next;
+}
+
+/** Translate a key, filling {placeholders}. Falls back to English. */
+export function t(key, vars = {}) {
+  const s = STRINGS[lang][key] ?? STRINGS.en[key] ?? key;
+  return s.replace(/\{(\w+)\}/g, (_, k) => String(vars[k] ?? ""));
+}
+
+/** Fill [data-i18n] text and [data-i18n-placeholder] attributes in static HTML. */
+export function translateDom(root = document) {
+  for (const n of root.querySelectorAll("[data-i18n]")) n.textContent = t(n.dataset.i18n);
+  for (const n of root.querySelectorAll("[data-i18n-placeholder]")) n.placeholder = t(n.dataset.i18nPlaceholder);
+}
+
+document.documentElement.lang = lang;

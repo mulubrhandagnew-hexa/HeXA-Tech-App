@@ -1,6 +1,6 @@
 # HeXA Books
 
-> This repo also contains **[Tigtog](tigtog/README.md)**, a short-video social app, in `tigtog/`.
+> This repo also contains **[Tigtog](tigtog/README.md)** in `tigtog/`: an app for making and sharing music and videos in Tigrinya and Amharic.
 
 Double-entry bookkeeping and tax engine for the HeXA platform.
 

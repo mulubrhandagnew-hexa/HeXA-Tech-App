@@ -28,10 +28,20 @@ export interface Media {
   createdAt: string;
 }
 
+/** Content language: Tigrinya, Amharic, or anything else. */
+export type Language = "ti" | "am" | "other";
+export const LANGUAGES: Language[] = ["ti", "am", "other"];
+
+/** What the post is: a regular video, or music made/shared as a video. */
+export type PostKind = "video" | "music";
+export const POST_KINDS: PostKind[] = ["video", "music"];
+
 export interface Post {
   id: string;
   authorId: string;
   caption: string;
+  language: Language;
+  kind: PostKind;
   hashtags: string[];
   mediaId: string;
   views: number;
@@ -88,6 +98,8 @@ export interface PublicUser {
 export interface FeedPost {
   id: string;
   caption: string;
+  language: Language;
+  kind: PostKind;
   hashtags: string[];
   mediaUrl: string;
   contentType: string;

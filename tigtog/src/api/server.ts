@@ -12,7 +12,7 @@ import { mkdir, writeFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Tigtog } from "../service/tigtog.js";
-import { TigtogError } from "../domain/types.js";
+import { LANGUAGES, TigtogError } from "../domain/types.js";
 import { newId } from "../domain/auth.js";
 import { type TigtogRepository, InMemoryRepository } from "../persistence/repository.js";
 
@@ -42,7 +42,13 @@ const profileSchema = z.object({
   displayName: z.string().max(50).optional(),
   bio: z.string().max(160).optional(),
 });
-const postSchema = z.object({ caption: z.string().max(300).default(""), mediaId: z.string().min(1) });
+const languageSchema = z.enum(LANGUAGES as [string, ...string[]]);
+const postSchema = z.object({
+  caption: z.string().max(500).default(""),
+  mediaId: z.string().min(1),
+  language: z.enum(["ti", "am", "other"]).default("other"),
+  kind: z.enum(["video", "music"]).default("video"),
+});
 const commentSchema = z.object({ text: z.string().min(1).max(300) });
 
 export interface ServerOptions {
@@ -110,6 +116,9 @@ export function createServer(opts: ServerOptions): Express {
     viewerId: req.userId,
     limit: Number(req.query.limit) || undefined,
     cursor: typeof req.query.cursor === "string" ? req.query.cursor : undefined,
+    language: languageSchema.safeParse(req.query.lang).success
+      ? (req.query.lang as "ti" | "am" | "other")
+      : undefined,
   });
 
   app.get("/health", (_req, res) => res.json({ status: "ok", service: "tigtog" }));

@@ -7,6 +7,8 @@
 import {
   type Comment,
   type FeedPost,
+  type Language,
+  type PostKind,
   type Follow,
   type Like,
   type Media,
@@ -38,6 +40,8 @@ export interface FeedOptions {
   viewerId?: string | undefined;
   limit?: number;
   cursor?: string | undefined;
+  /** Only posts in this language. */
+  language?: Language | undefined;
   /** Injected clock for deterministic ranking in tests. */
   now?: Date;
 }
@@ -63,7 +67,8 @@ export class Tigtog {
     }
     for (const s of state.sessions) t.sessions.set(s.tokenHash, s);
     for (const m of state.media) t.media.set(m.id, m);
-    for (const p of state.posts) t.posts.set(p.id, p);
+    // Posts saved before language/kind existed default to "other"/"video".
+    for (const p of state.posts) t.posts.set(p.id, { ...p, language: p.language ?? "other", kind: p.kind ?? "video" });
     for (const l of state.likes) t.likes.set(likeKey(l.postId, l.userId), l);
     for (const c of state.comments) t.comments.set(c.id, c);
     for (const f of state.follows) t.follows.set(followKey(f.followerId, f.followeeId), f);
@@ -202,7 +207,10 @@ export class Tigtog {
 
   // ------------------------------------------------------------------- posts
 
-  createPost(authorId: string, input: { caption: string; mediaId: string }): FeedPost {
+  createPost(
+    authorId: string,
+    input: { caption: string; mediaId: string; language?: Language; kind?: PostKind },
+  ): FeedPost {
     this.requireUser(authorId);
     const media = this.media.get(input.mediaId);
     if (!media) throw new TigtogError(400, "media_not_found", "upload the video first");
@@ -219,6 +227,8 @@ export class Tigtog {
       id: newId(),
       authorId,
       caption,
+      language: input.language ?? "other",
+      kind: input.kind ?? "video",
       hashtags: parseHashtags(caption),
       mediaId: media.id,
       views: 0,
@@ -419,7 +429,8 @@ export class Tigtog {
   }
 
   /** Offset-based pagination; cursor is the stringified offset. */
-  private page(posts: Post[], opts: FeedOptions): FeedPage {
+  private page(all: Post[], opts: FeedOptions): FeedPage {
+    const posts = opts.language ? all.filter((p) => p.language === opts.language) : all;
     const limit = Math.min(Math.max(opts.limit ?? 10, 1), 50);
     const offset = Math.max(0, Number.parseInt(opts.cursor ?? "0", 10) || 0);
     const slice = posts.slice(offset, offset + limit);
@@ -433,6 +444,8 @@ export class Tigtog {
     return {
       id: p.id,
       caption: p.caption,
+      language: p.language,
+      kind: p.kind,
       hashtags: p.hashtags,
       mediaUrl: media ? `/media/${media.fileName}` : "",
       contentType: media?.contentType ?? "",

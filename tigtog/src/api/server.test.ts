@@ -43,13 +43,13 @@ async function upload(token: string, body = FAKE_MP4, type = "video/mp4") {
     .send(body);
 }
 
-async function publish(token: string, caption: string) {
+async function publish(token: string, caption: string, extra: Record<string, string> = {}) {
   const media = await upload(token);
   expect(media.status).toBe(201);
   const res = await request(app)
     .post("/api/posts")
     .set("Authorization", `Bearer ${token}`)
-    .send({ caption, mediaId: media.body.media.id })
+    .send({ caption, mediaId: media.body.media.id, ...extra })
     .expect(201);
   return res.body.post;
 }
@@ -150,6 +150,31 @@ describe("Tigtog API", () => {
       .expect(400);
     await request(app).get("/api/nope").expect(404);
     await request(app).get("/media/missing.mp4").expect(404);
+  });
+
+  it("tags posts with language and kind, and filters feeds by language", async () => {
+    const a = await signup("abeba");
+    const ti = await publish(a, "ሰላም #ጓይላ", { language: "ti", kind: "music" });
+    expect(ti).toMatchObject({ language: "ti", kind: "music", hashtags: ["ጓይላ"] });
+    const plain = await publish(a, "hello");
+    expect(plain).toMatchObject({ language: "other", kind: "video" });
+    await publish(a, "እንኳን ደህና መጡ", { language: "am" });
+
+    const tiFeed = await request(app).get("/api/feed/for-you?lang=ti").expect(200);
+    expect(tiFeed.body.posts.map((p: { id: string }) => p.id)).toEqual([ti.id]);
+    const amFeed = await request(app).get("/api/users/abeba/posts?lang=am").expect(200);
+    expect(amFeed.body.posts).toHaveLength(1);
+    const all = await request(app).get("/api/feed/for-you?lang=nonsense").expect(200);
+    expect(all.body.posts).toHaveLength(3);
+    const tag = await request(app).get(`/api/tags/${encodeURIComponent("ጓይላ")}`).expect(200);
+    expect(tag.body.posts).toHaveLength(1);
+
+    const media = await upload(a);
+    await request(app)
+      .post("/api/posts")
+      .set("Authorization", `Bearer ${a}`)
+      .send({ caption: "", mediaId: media.body.media.id, language: "fr" })
+      .expect(400);
   });
 
   it("serves the web client", async () => {
