@@ -114,6 +114,29 @@ Listen: [old drums](listening/tigtog_guayla_bahlawi_before_drums.mp3) ·
 [new with krar](listening/tigtog_guayla_bahlawi_after_full.mp3)
 (16 s each, Tigtog's own synthesized output).
 
+### Second round (listener: "a little bit OK, needs a lot of improvement")
+
+The listener flagged the drum sound, the rhythm pattern and the claps. A
+finer analysis of the traditional wedding recording (each beat split in 6)
+showed the missing strokes and the missing tone:
+
+| | Real ከበሮ (wedding) | Round 1 | Round 2 |
+|---|---|---|---|
+| Pattern (12 steps/bar) | `█ · · · · ▒ │ █ ▒ · · ▒ ·` | `█ · · · · · │ █ · · · ▒ ·` | `█ · · · · ▒ │ █ ▒ · · ▒ ·` |
+| Energy 380–2000 Hz vs peak | −10 to −22 dB | 20–40 dB too weak (pure tones) | within ~5 dB |
+| Deep body 30–90 Hz | −10 to −14 dB | 11 dB too weak | within ~4 dB |
+| Ring at 150–200 ms | −28 dB | −68 dB | −30 dB |
+
+Changes: the drum is now a hand-struck membrane (a short noise strike
+exciting ten uneven skin resonances, a deep body resonance and a leather
+slap) instead of a few pure tones; the "ta" pickup strokes before beat 2,
+after beat 2 and before the bar were added; claps are a crowd of nine hands
+landing up to ~15 ms apart. Remaining measured gaps: 130–180 Hz ~7 dB weak,
+2–6 kHz ~8 dB bright, pickups a little soft in the low drum.
+
+Listen: [round 2 drums](listening/tigtog_guayla_bahlawi_v2_drums.mp3) ·
+[round 2 with krar](listening/tigtog_guayla_bahlawi_v2_full.mp3)
+
 Measurements can rule out wrong sounds but cannot confirm that something
 sounds Tigrinya; that needs native listeners. Real ከበሮ and krar recordings
 from Tigrinya musicians would be better than any synthesis.

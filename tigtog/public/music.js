@@ -36,10 +36,12 @@ export const RHYTHMS = {
   },
   guaylaWedding: {
     stepsPerBar: 12, stepsPerBeat: 6, bpm: 88, bass: false,
-    low: { 0: 0.85, 6: 1, 10: 0.25 },
-    high: [],
+    // Measured on the traditional wedding recording at 6 steps per beat:
+    //   ከበሮ  █ · · · · ▒ | █ ▒ · · ▒ ·    claps █ · · · · · | █ · · · · ·
+    low: { 0: 1, 6: 0.9, 7: 0.3 },
+    high: { 5: 0.5, 10: 0.45 },
     shaker: [],
-    clap: { 0: 0.85, 6: 1 },
+    clap: { 0: 0.8, 6: 1 },
   },
   eskista: { stepsPerBar: 12, stepsPerBeat: 6, bpm: 112, low: [0, 7], high: [3, 6, 9, 10], shaker: [0, 2, 4, 6, 8, 10], clap: [6] },
   chikchika: { stepsPerBar: 12, stepsPerBeat: 6, bpm: 126, low: [0, 6], high: [2, 3, 8, 9], shaker: [0, 1, 2, 4, 6, 7, 8, 10], clap: [3, 9] },
@@ -444,49 +446,64 @@ export class MusicEngine {
   }
 
   /**
-   * ከበሮ (kebero), the large two-headed hand drum. Measured against real
-   * kebero hits (docs/reference-analysis.md): no consistent pitch slide (a
-   * fixed downward slide is what made the old synth sound like a tabla), and
-   * a longer ring (~-90 to -140 dB/s). Built from fixed-pitch drum-head modes
-   * plus the sound of the hand on the skin, varied slightly per hit like a
-   * player's hand.
+   * A drumhead struck by a hand: a short burst of noise (the strike) rings
+   * many uneven skin resonances (ideal-membrane mode ratios) plus a broadband
+   * "leather" slap. Levels follow the tone profile measured on real ከበሮ hits
+   * in the traditional wedding recording (strong 130–380 Hz, then a gentle
+   * slope to 2 kHz) — pure sine tones sounded electronic.
    */
-  _drumHit(time, vel, modes, skin) {
+  _membrane(time, vel, f0, { level = 1, ring = 0.06, slap = 0.35, slapFreq = 900, body = null } = {}) {
     const ctx = this.ctx;
-    const jitter = () => 1 + (Math.random() * 2 - 1) * 0.03;
-    for (const [freq, level, decay] of modes) {
+    const ratios = [1, 1.59, 2.14, 2.3, 2.65, 2.92, 3.16, 3.5, 3.6, 4.06];
+    const tilt = [1, 0.85, 0.7, 0.62, 0.5, 0.42, 0.35, 0.28, 0.24, 0.18];
+    const j = () => 1 + (Math.random() * 2 - 1) * 0.04; // a hand never hits the same way twice
+    const strike = this._noiseBurst(time, 0.008, 1.0 * vel * level * j(), "lowpass", 1300, 0.7);
+    ratios.forEach((r, i) => {
+      const f = f0 * r * j();
+      const bp = ctx.createBiquadFilter();
+      bp.type = "bandpass";
+      bp.frequency.value = f;
+      bp.Q.value = Math.PI * f * ring * (1 - i * 0.05); // ring time τ ≈ Q / (π f)
       const g = ctx.createGain();
-      const peak = level * vel * jitter();
-      g.gain.setValueAtTime(0.0001, time);
-      g.gain.exponentialRampToValueAtTime(peak, time + 0.003);
-      g.gain.exponentialRampToValueAtTime(0.0001, time + decay);
-      g.connect(this.master);
-      // Fixed pitch: a real drum head barely moves (< 1/10 semitone here).
-      const o = this._osc("sine", freq * jitter(), time, time + decay + 0.02, g);
-      o.frequency.setTargetAtTime(freq * 0.995, time, 0.05);
+      g.gain.value = tilt[i] * 6;
+      strike.connect(bp); bp.connect(g); g.connect(this.master);
+    });
+    // The drum's wooden/leather body: a deep resonance under the skin modes.
+    if (body) {
+      const [bf, bg] = body;
+      const bp = ctx.createBiquadFilter();
+      bp.type = "bandpass";
+      bp.frequency.value = bf * j();
+      bp.Q.value = Math.PI * bf * ring * 1.3;
+      const g = ctx.createGain();
+      g.gain.value = bg;
+      strike.connect(bp); bp.connect(g); g.connect(this.master);
     }
-    const [lo, hi, level, dur] = skin;
-    const bp = this._noiseBurst(time, dur, level * vel * jitter(), "bandpass", Math.sqrt(lo * hi), Math.sqrt(lo * hi) / (hi - lo));
-    bp.connect(this.master);
+    // Hand-on-leather slap: broadband, short.
+    this._noiseBurst(time, 0.045, slap * vel * level * j(), "bandpass", slapFreq, 0.6).connect(this.master);
   }
 
   _lowKebero(time, vel = 1) {
-    // Big head, open stroke: body mode + head modes (inharmonic, like a membrane).
-    this._drumHit(time, vel, [[92, 0.75, 0.62], [168, 0.35, 0.5], [262, 0.12, 0.3]], [180, 900, 0.22, 0.05]);
+    // Big head, open stroke ("DUM").
+    this._membrane(time, vel, 132, { level: 1, ring: 0.09, slap: 0.2, slapFreq: 600, body: [72, 9] });
   }
 
   _highKebero(time, vel = 1) {
-    // Small head, hand slap: higher modes, shorter, more skin.
-    this._drumHit(time, vel, [[330, 0.28, 0.32], [518, 0.12, 0.22]], [700, 3000, 0.3, 0.035]);
+    // Small head / edge stroke ("ta"): higher, shorter, more slap.
+    this._membrane(time, vel, 230, { level: 0.45, ring: 0.045, slap: 0.08, slapFreq: 700, body: [105, 7] });
   }
 
   _shaker(time, level) {
     this._noiseBurst(time, 0.045, level, "highpass", 7000, 0.7).connect(this.master);
   }
 
-  _clap(time, vel = 1) {
-    for (const d of [0, 0.012, 0.024]) {
-      this._noiseBurst(time + d, 0.06, 0.28 * vel, "bandpass", 1600, 1.1).connect(this.master);
+  /** A crowd clapping (ጣቕዒት): many hands, each a little early or late. */
+  _clap(time, vel = 1, hands = 9) {
+    for (let i = 0; i < hands; i++) {
+      const spread = (Math.random() + Math.random() + Math.random() - 1.5) * 0.018; // ~±15 ms
+      const f = 700 + Math.random() * 1100; // hands in a crowd: dull, not hissy
+      this._noiseBurst(time + spread, 0.03 + Math.random() * 0.02, (0.16 + Math.random() * 0.08) * vel,
+        "bandpass", f, 1 + Math.random()).connect(this.master);
     }
   }
 
