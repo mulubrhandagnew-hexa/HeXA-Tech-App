@@ -5,6 +5,13 @@ brings over work done in GitHub (`mulubrhandagnew-hexa/HeXA-Tech-App`, branch
 `claude/tigtog-app-0mc7ai`, folder `tigtog/`). Hercules is the main app from
 now on.
 
+**How changes reach Hercules** (per Hercules support): there is no GitHub
+sync or file API. Either (a) Claude works on the app through the
+**Hercules MCP** (`https://hercules.app/mcp`), sending instructions that
+Hercules carries out (uses the organization's AI credits), or (b) a
+one-time import: zip this project (no `node_modules`/build folders), drag
+the zip into Hercules, and ask for a migration plan.
+
 ## What Tigtog is
 
 An app to **make and share music and videos in Tigrinya (ትግርኛ) and Amharic
@@ -91,7 +98,11 @@ Goal: train Tigtog's own Tigrinya singing voice later (DiffSinger, Apache-2.0).
 - **Consent first**, versioned (`VOICE_CONSENT_VERSION = 1`): three explicit
   checkboxes — 18+, my own voice, agree to use for training.
 - **Recordings are private**: never in public storage, never served by URL,
-  never shown to other users. Use a private bucket/table.
+  never shown to other users. In Hercules, **do NOT use Files & Media** —
+  every file there gets a public CDN URL (confirmed by Hercules support).
+  Store recordings as files in the **app backend** and serve them only
+  through backend functions to the signed-in owner (or to an admin export).
+  This counts toward Hercules Cloud storage.
 - Singers can **delete any recording**, or **withdraw**, which deletes all
   their audio and labels.
 - **Modes:** (a) *ባህላዊ ደርፊ* (default): traditional ከበሮ+claps loop at 88 BPM
