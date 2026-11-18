@@ -47,6 +47,8 @@ let engine; // shared across visits so audio state persists
 export function renderStudio(view, h) {
   const { el, api, store, toast, requireLogin, navigate, fidelField } = h;
   engine ??= new MusicEngine();
+  // Real ከበሮ recordings, if installed (public/samples/kebero); else synthesized.
+  if (!engine._samplesTried) { engine._samplesTried = true; engine.loadDrumSamples().catch(() => {}); }
   let camStream = null;
   let micStream = null;
   let micNode = null;

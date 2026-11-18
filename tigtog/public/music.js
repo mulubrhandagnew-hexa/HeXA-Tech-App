@@ -131,6 +131,16 @@ export function renderKrar(freq, sampleRate, opts = KRAR, rand = Math.random) {
   return out;
 }
 
+/**
+ * Mix levels: in ጓይላ the ከበሮ drives the music, so drums sit slightly above
+ * the melody. Measured: the synthesized drum was ~21 dB below the krar and
+ * recorded hits (normalised to -1 dB) ~8 dB above it.
+ */
+const DRUM_GAIN = 15;
+const CLAP_GAIN = 2.5;
+const SLAP_GAIN = 3;
+const SAMPLE_GAIN = 0.3;
+
 /** Bowed wata ornaments, measured from a Tigrinya intro lead (median values). */
 export const WATA = { attack: 0.15, vibratoHz: 3.9, vibratoCents: 60, startCents: 6, scoopCents: -10 };
 
@@ -465,8 +475,8 @@ export class MusicEngine {
       bp.frequency.value = f;
       bp.Q.value = Math.PI * f * ring * (1 - i * 0.05); // ring time τ ≈ Q / (π f)
       const g = ctx.createGain();
-      g.gain.value = tilt[i] * 6;
-      strike.connect(bp); bp.connect(g); g.connect(this.master);
+      g.gain.value = tilt[i] * 6 * DRUM_GAIN;
+      strike.connect(bp); bp.connect(g); g.connect(this._drumOut());
     });
     // The drum's wooden/leather body: a deep resonance under the skin modes.
     if (body) {
@@ -476,25 +486,98 @@ export class MusicEngine {
       bp.frequency.value = bf * j();
       bp.Q.value = Math.PI * bf * ring * 1.3;
       const g = ctx.createGain();
-      g.gain.value = bg;
-      strike.connect(bp); bp.connect(g); g.connect(this.master);
+      g.gain.value = bg * DRUM_GAIN;
+      strike.connect(bp); bp.connect(g); g.connect(this._drumOut());
     }
     // Hand-on-leather slap: broadband, short.
-    this._noiseBurst(time, 0.045, slap * vel * level * j(), "bandpass", slapFreq, 0.6).connect(this.master);
+    this._noiseBurst(time, 0.045, slap * vel * level * j() * SLAP_GAIN, "bandpass", slapFreq, 0.6).connect(this._drumOut());
+  }
+
+  /**
+   * Drum bus: a fast compressor so a hit's attack can't spike the output,
+   * while the drum stays full (created once per audio context).
+   */
+  _drumOut() {
+    if (!this._drumBus || this._drumBus.context !== this.ctx) {
+      const c = this.ctx.createDynamicsCompressor();
+      c.threshold.value = -12;
+      c.knee.value = 6;
+      c.ratio.value = 8;
+      c.attack.value = 0.002;
+      c.release.value = 0.12;
+      // Soft limiter: rounds off any remaining peak (≤ -1 dB) instead of clipping.
+      const shaper = this.ctx.createWaveShaper();
+      const curve = new Float32Array(2048);
+      for (let i = 0; i < curve.length; i++) curve[i] = 0.89 * Math.tanh((i / (curve.length - 1)) * 2 - 1) / Math.tanh(1);
+      shaper.curve = curve;
+      const pre = this.ctx.createGain();
+      pre.gain.value = 0.9;
+      c.connect(pre);
+      pre.connect(shaper);
+      shaper.connect(this.master);
+      this._drumBus = c;
+    }
+    return this._drumBus;
   }
 
   _lowKebero(time, vel = 1) {
-    // Big head, open stroke ("DUM").
+    // Big head, open stroke ("DUM"): a real recorded hit when available.
+    if (this._playSample("dum", time, vel)) return;
     this._membrane(time, vel, 132, { level: 1, ring: 0.09, slap: 0.2, slapFreq: 600, body: [72, 9] });
   }
 
   _highKebero(time, vel = 1) {
     // Small head / edge stroke ("ta"): higher, shorter, more slap.
+    if (this._playSample("ta", time, vel * 0.8)) return;
     this._membrane(time, vel, 230, { level: 0.45, ring: 0.045, slap: 0.08, slapFreq: 700, body: [105, 7] });
   }
 
+  /**
+   * Load real ከበሮ recordings (made with tools/slice-hits.py). Expects
+   * `<base>/manifest.json` = { "dum": ["dum_01.wav", …], "ta": [...] }.
+   * Resolves to the number of hits loaded; 0 (synthesized drum) if none.
+   */
+  async loadDrumSamples(base = "/samples/kebero") {
+    const ctx = this.ensure();
+    let manifest;
+    try {
+      const res = await fetch(`${base}/manifest.json`);
+      if (!res.ok) return 0;
+      manifest = await res.json();
+    } catch { return 0; }
+    this._samples = {};
+    let n = 0;
+    for (const [stroke, files] of Object.entries(manifest)) {
+      const bufs = await Promise.all((files || []).map(async (f) => {
+        try { return await ctx.decodeAudioData(await (await fetch(`${base}/${f}`)).arrayBuffer()); } catch { return null; }
+      }));
+      this._samples[stroke] = bufs.filter(Boolean);
+      n += this._samples[stroke].length;
+    }
+    return n;
+  }
+
+  /** Play a random recorded hit of `stroke`; false if none are loaded. */
+  _playSample(stroke, time, vel) {
+    const pool = this._samples?.[stroke];
+    if (!pool?.length) return false;
+    // Never the same hit twice in a row, like a real hand.
+    let k = Math.floor(Math.random() * pool.length);
+    if (pool.length > 1 && k === this._lastSample?.[stroke]) k = (k + 1) % pool.length;
+    (this._lastSample ??= {})[stroke] = k;
+    const src = this.ctx.createBufferSource();
+    src.buffer = pool[k];
+    src.playbackRate.value = 1 + (Math.random() * 2 - 1) * 0.015;
+    const g = this.ctx.createGain();
+    g.gain.value = vel * SAMPLE_GAIN * (0.9 + Math.random() * 0.2);
+    src.connect(g);
+    g.connect(this._drumOut());
+    src.start(time);
+    return true;
+  }
+
   _shaker(time, level) {
-    this._noiseBurst(time, 0.045, level, "highpass", 7000, 0.7).connect(this.master);
+    this._noiseBurst(time, 0.045, level, "highpass", 7000, 0.7).connect(this._drumOut());
   }
 
   /** A crowd clapping (ጣቕዒት): many hands, each a little early or late. */
@@ -502,8 +585,8 @@ export class MusicEngine {
     for (let i = 0; i < hands; i++) {
       const spread = (Math.random() + Math.random() + Math.random() - 1.5) * 0.018; // ~±15 ms
       const f = 700 + Math.random() * 1100; // hands in a crowd: dull, not hissy
-      this._noiseBurst(time + spread, 0.03 + Math.random() * 0.02, (0.16 + Math.random() * 0.08) * vel,
-        "bandpass", f, 1 + Math.random()).connect(this.master);
+      this._noiseBurst(time + spread, 0.03 + Math.random() * 0.02, (0.16 + Math.random() * 0.08) * vel * CLAP_GAIN,
+        "bandpass", f, 1 + Math.random()).connect(this._drumOut());
     }
   }
 

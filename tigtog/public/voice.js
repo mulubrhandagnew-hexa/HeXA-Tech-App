@@ -33,6 +33,7 @@ function pickAudioMime() {
 export function renderVoice(view, h) {
   const { api, store, el, toast, requireLogin, fidelField } = h;
   engine ??= new MusicEngine();
+  if (!engine._samplesTried) { engine._samplesTried = true; engine.loadDrumSamples().catch(() => {}); }
   let mic = null;
   let timer = 0;
   let disposed = false;
