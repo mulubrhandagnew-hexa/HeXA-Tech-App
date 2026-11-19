@@ -22,12 +22,12 @@ const FONT = '"Noto Sans Ethiopic", "Abyssinica SIL", "Nyala", system-ui, sans-s
 // Ge'ez hashtags, in the song's own language (Tigrinya / Amharic spellings).
 const TAGS = {
   ti: {
-    guayla: "ጓይላ", guaylaWedding: "ጓይላ", eskista: "እስክስታ", chikchika: "ችክችካ", ballad: "ደርፊ",
+    guayla: "ጓይላ", guaylaWedding: "ጓይላ", guaylaClassic: "ጓይላ", eskista: "እስክስታ", chikchika: "ችክችካ", ballad: "ደርፊ",
     krar: "ኽራር", masinko: "ዋጣ", washint: "ሸምበቆ", embilta: "እምብልታ",
     tizita: "ትዝታ", bati: "ባቲ", ambassel: "ኣምባሰል", anchihoye: "ኣንቺሆየ", lang: "ትግርኛ",
   },
   am: {
-    guayla: "ጓይላ", guaylaWedding: "ጓይላ", eskista: "እስክስታ", chikchika: "ችክችካ", ballad: "ዘፈን",
+    guayla: "ጓይላ", guaylaWedding: "ጓይላ", guaylaClassic: "ጓይላ", eskista: "እስክስታ", chikchika: "ችክችካ", ballad: "ዘፈን",
     krar: "ክራር", masinko: "ማሲንቆ", washint: "ዋሽንት", embilta: "እምቢልታ",
     tizita: "ትዝታ", bati: "ባቲ", ambassel: "አምባሰል", anchihoye: "አንቺሆዬ", lang: "አማርኛ",
   },

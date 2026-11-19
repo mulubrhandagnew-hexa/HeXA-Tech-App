@@ -152,6 +152,24 @@ Rendered clip measured like the real krar: positions 0/⅙/⅓/⅔ (none on ½,
 Listen: [riff 1](listening/tigtog_guayla_bahlawi_v4_riff1.mp3) ·
 [riff 2](listening/tigtog_guayla_bahlawi_v4b_riff2.mp3)
 
+### New rhythm: ጓይላ — classic (from the owner's chosen reference)
+
+Measured on a classic Tigrinya recording the owner picked as "best krar,
+kebero and hand claps" (measurements only): ~70 BPM, near A440 (+6¢),
+Tizita major. Each beat: DUM, a light stroke right after it, strokes at
+half-beat and just before the next beat; claps only on the beats. The lead
+picks a running stream (~5 notes per beat on all six positions, 56%
+repeated notes, ~1 octave range, few jumps).
+
+Added as `guaylaClassic`, with a running pick, and soft strokes now sound
+darker than hard ones (as on a real drum). Drum grid of the render vs the
+recording, low ከበሮ per beat: .31/.25/.25 · .51/.34/.16 vs .43/.28/.38 ·
+.46/.34/.26; mid drum TA strokes .53/.56 · .57/.55 vs .43/.57 · .52/.56;
+claps ~0.06 off the beat vs ~0.1.
+
+Listen: [classic, full](listening/tigtog_guayla_classic_full.mp3) ·
+[classic, drums](listening/tigtog_guayla_classic_drums.mp3)
+
 Measurements can rule out wrong sounds but cannot confirm that something
 sounds Tigrinya; that needs native listeners. Real ከበሮ and krar recordings
 from Tigrinya musicians would be better than any synthesis.

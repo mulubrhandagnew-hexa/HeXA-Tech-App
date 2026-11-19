@@ -24,9 +24,23 @@ export const SCALES = {
  * kebero on each beat, a pickup before the bar, and hand-claps on the beats.
  */
 /** Order shown in the studio: traditional Tigray first. */
-export const RHYTHM_ORDER = ["guaylaWedding", "guayla", "eskista", "chikchika", "ballad"];
+export const RHYTHM_ORDER = ["guaylaWedding", "guaylaClassic", "guayla", "eskista", "chikchika", "ballad"];
 
 export const RHYTHMS = {
+  // Classic Tigrinya Guayla, measured at 6 steps per beat on a classic
+  // recording the owner chose as the reference ("best krar, kebero, claps"):
+  //   low ከበሮ  █ ▒ · ▒ · ▒ (each beat)   mid drum █ · · ▓ · ▓   claps █ · · · · ·
+  // ~70 BPM; the lead picks a running stream (~5 notes/beat, all positions),
+  // 56% repeated notes, neighbour steps, about one octave of range.
+  guaylaClassic: {
+    stepsPerBar: 12, stepsPerBeat: 6, bpm: 70, bass: false,
+    low: { 0: 0.95, 1: 0.2, 6: 1, 7: 0.22 },
+    high: { 3: 0.22, 5: 0.32, 9: 0.25, 11: 0.32 },
+    shaker: [],
+    clap: { 0: 0.95, 6: 1 },
+    pick: "running",
+    melody: { low: 3, high: 8, repeat: 0.56, up: 0.15, down: 0.13, jump: 0.03 },
+  },
   guayla: {
     stepsPerBar: 12, stepsPerBeat: 6, bpm: 80,
     low: { 0: 1, 6: 1 },
@@ -160,16 +174,19 @@ const hit = (pattern, step) =>
 export function generateMelody(rhythm, rand = Math.random) {
   const cols = columnsFor(rhythm);
   const perBar = cols / BARS_IN_LOOP;
-  const LOW = 1, HIGH = 9; // rows: about 1½ octaves around the middle, as measured
+  const m = RHYTHMS[rhythm].melody ?? {};
+  // Defaults measured on a krar recording; a rhythm can carry its own.
+  const LOW = m.low ?? 1, HIGH = m.high ?? 9;
+  const pRep = m.repeat ?? 0.62, pUp = m.up ?? 0.11, pDown = m.down ?? 0.12, pJump = m.jump ?? 0.11;
   const motif = [];
   let row = rand() < 0.5 ? 5 : 4;
   for (let c = 0; c < perBar; c++) {
     if (c > 0) {
       const x = rand();
-      if (x < 0.62) { /* repeat the note */ }
-      else if (x < 0.73) row += 1;
-      else if (x < 0.85) row -= 1;
-      else if (x < 0.96) row += row + 5 <= HIGH ? 5 : row - 5 >= LOW ? -5 : 1; // octave jump (5 scale notes)
+      if (x < pRep) { /* repeat the note */ }
+      else if (x < pRep + pUp) row += 1;
+      else if (x < pRep + pUp + pDown) row -= 1;
+      else if (x < pRep + pUp + pDown + pJump) row += row + 5 <= HIGH ? 5 : row - 5 >= LOW ? -5 : 1; // octave jump
       else row += rand() < 0.5 ? 2 : -2;
       row = Math.max(LOW, Math.min(HIGH, row));
     }
@@ -182,7 +199,7 @@ export function generateMelody(rhythm, rand = Math.random) {
       if (r === null) return;
       let rr = r;
       const last = bar === BARS_IN_LOOP - 1;
-      if (last && c === perBar - 1) rr = 5;                                  // end on the home note
+      if (last && c === perBar - 1) rr = Math.max(LOW, Math.min(HIGH, 5));   // end on the home note
       else if (last && c === perBar - 2 && rand() < 0.3) rr = 6; // sometimes lead into it
       notes.add(`${rr}:${bar * perBar + c}`);
     });
@@ -312,7 +329,8 @@ export class MusicEngine {
 
     // ኽራር picking: a quick, lighter repeat right after the beat ("ta-ka"),
     // the 1/6-beat position measured on the krar recording.
-    if (this.instrument === "krar" && r.stepsPerBeat === 6 && loopStep % 2 === 1 && inBar % r.stepsPerBeat === 1) {
+    const runningPick = r.pick === "running" && (this.instrument === "krar" || this.instrument === "masinko");
+    if (loopStep % 2 === 1 && r.stepsPerBeat === 6 && (runningPick || (this.instrument === "krar" && inBar % r.stepsPerBeat === 1))) {
       const prev = (loopStep - 1) / 2;
       for (const key of this.notes) {
         const [row, c] = key.split(":").map(Number);
@@ -509,7 +527,9 @@ export class MusicEngine {
     const ratios = [1, 1.59, 2.14, 2.3, 2.65, 2.92, 3.16, 3.5, 3.6, 4.06];
     const tilt = [1, 0.85, 0.7, 0.62, 0.5, 0.42, 0.35, 0.28, 0.24, 0.18];
     const j = () => 1 + (Math.random() * 2 - 1) * 0.04; // a hand never hits the same way twice
-    const strike = this._noiseBurst(time, 0.008, 1.0 * vel * level * j(), "lowpass", 1300, 0.7);
+    // Softer hits are darker: a soft hand excites fewer high tones.
+    const soft = Math.min(1, Math.max(0, vel));
+    const strike = this._noiseBurst(time, 0.008, 1.0 * vel * level * j(), "lowpass", 450 + 850 * soft, 0.7);
     ratios.forEach((r, i) => {
       const f = f0 * r * j();
       const bp = ctx.createBiquadFilter();
@@ -532,7 +552,7 @@ export class MusicEngine {
       strike.connect(bp); bp.connect(g); g.connect(this._drumOut());
     }
     // Hand-on-leather slap: broadband, short.
-    this._noiseBurst(time, 0.045, slap * vel * level * j() * SLAP_GAIN, "bandpass", slapFreq, 0.6).connect(this._drumOut());
+    this._noiseBurst(time, 0.045, slap * soft * soft * level * j() * SLAP_GAIN, "bandpass", slapFreq * (0.6 + 0.4 * soft), 0.6).connect(this._drumOut());
   }
 
   /**
