@@ -27,8 +27,10 @@ Context. The owner tested the current AI-generated beats and said they are "tota
 
 5. Check and report.
    - Run the full test suite (baseline was 230 passing); add tests for the wrapper if you add one.
-   - In the published app: the studio opens on ጓይላ ባህላዊ, a tap plays the beat, there is no bass in the traditional rhythm, switching rhythm/scale/instrument/key works, and no request goes to Replicate/MusicGen unless the user explicitly chooses the AI option.
+   - In the preview (do not publish yet — the owner reviews first; tigtog.app is live): the studio opens on ጓይላ ባህላዊ, a tap plays the beat, there is no bass in the traditional rhythm, switching rhythm/scale/instrument/key works, and no request goes to Replicate/MusicGen unless the user explicitly chooses the AI option.
    - Confirm no file in Files & Media is one of the reference songs.
    - Report what changed, which files, test results, and anything you could not do.
 
 Not in this phase (later phases): the "Teach Tigtog to sing" voice dataset (it needs private backend storage, never Files & Media), Fidel typing in every text field, and the tigtog.app domain (already live — do not change it).
+
+Do not publish. Stop after the report so the owner can review the preview.
