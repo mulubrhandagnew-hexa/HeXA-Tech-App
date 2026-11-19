@@ -149,24 +149,49 @@ const hit = (pattern, step) =>
   Array.isArray(pattern) ? (pattern.includes(step) ? 1 : 0) : (pattern[step] ?? 0);
 
 /** A pleasant random melody: a stepwise walk that lands on the root at the end. */
+/**
+ * A ኽራር-style riff, built from statistics measured on a krar recording
+ * (docs/reference-analysis.md), not from anyone's melody:
+ *  - dense: a note on almost every column (~3 per beat);
+ *  - ~60% repeated notes, ~25% neighbour steps, ~10% octave/string jumps;
+ *  - narrow range (about an octave and a half around the middle);
+ *  - a one-bar riff repeated, the second time ending on the home note.
+ */
 export function generateMelody(rhythm, rand = Math.random) {
   const cols = columnsFor(rhythm);
   const perBar = cols / BARS_IN_LOOP;
-  const beat = RHYTHMS[rhythm].stepsPerBeat / 2; // columns per beat
+  const LOW = 1, HIGH = 9; // rows: about 1½ octaves around the middle, as measured
+  const motif = [];
+  let row = rand() < 0.5 ? 5 : 4;
+  for (let c = 0; c < perBar; c++) {
+    if (c > 0) {
+      const x = rand();
+      if (x < 0.62) { /* repeat the note */ }
+      else if (x < 0.73) row += 1;
+      else if (x < 0.85) row -= 1;
+      else if (x < 0.96) row += row + 5 <= HIGH ? 5 : row - 5 >= LOW ? -5 : 1; // octave jump (5 scale notes)
+      else row += rand() < 0.5 ? 2 : -2;
+      row = Math.max(LOW, Math.min(HIGH, row));
+    }
+    // Dense, but leave the odd gap so the riff breathes.
+    motif.push(c === 0 || rand() < 0.88 ? row : null);
+  }
   const notes = new Set();
-  let row = 5 + Math.floor(rand() * 3) - 1;
-  for (let c = 0; c < cols; c++) {
-    const onBeat = c % beat === 0;
-    const last = c === cols - 1 || c === cols - 2;
-    if (!onBeat && rand() < 0.45) continue;
-    if (last) { if (c === cols - 2) notes.add(`${rand() < 0.5 ? 5 : 0}:${c}`); continue; }
-    const leap = rand() < 0.15 ? (rand() < 0.5 ? -3 : 3) : Math.floor(rand() * 3) - 1;
-    row = Math.max(0, Math.min(ROWS - 1, row + leap));
-    if (c % perBar === 0 && rand() < 0.5) row = rand() < 0.5 ? 5 : 2; // anchor phrase starts
-    notes.add(`${row}:${c}`);
+  for (let bar = 0; bar < BARS_IN_LOOP; bar++) {
+    motif.forEach((r, c) => {
+      if (r === null) return;
+      let rr = r;
+      const last = bar === BARS_IN_LOOP - 1;
+      if (last && c === perBar - 1) rr = 5;                                  // end on the home note
+      else if (last && c === perBar - 2 && rand() < 0.3) rr = 6; // sometimes lead into it
+      notes.add(`${rr}:${bar * perBar + c}`);
+    });
   }
   return notes;
 }
+
+/** Small timing and loudness differences, like a person playing (seconds). */
+const human = (amount = 0.008) => (Math.random() * 2 - 1) * amount;
 
 export class MusicEngine {
   constructor() {
@@ -269,16 +294,31 @@ export class MusicEngine {
     const loopStep = step % (r.stepsPerBar * BARS_IN_LOOP);
 
     let v;
-    if ((v = hit(r.low, inBar))) this._lowKebero(time, v);
-    if ((v = hit(r.high, inBar))) this._highKebero(time, v);
-    if ((v = hit(r.shaker, inBar))) this._shaker(time, v === 1 ? (inBar % r.stepsPerBeat === 0 ? 0.12 : 0.06) : v);
-    if ((v = hit(r.clap, inBar))) this._clap(time, v);
+    // A person never lands exactly on the grid: off-beat strokes vary more
+    // than the main beat, and loudness varies a little.
+    const onBeat = inBar % r.stepsPerBeat === 0;
+    const t = () => Math.max(this.ctx.currentTime, time + human(onBeat ? 0.004 : 0.012));
+    const vv = (x) => x * (0.88 + Math.random() * 0.24);
+    if ((v = hit(r.low, inBar))) this._lowKebero(t(), vv(v));
+    if ((v = hit(r.high, inBar))) this._highKebero(t(), vv(v));
+    if ((v = hit(r.shaker, inBar))) this._shaker(t(), v === 1 ? (onBeat ? 0.12 : 0.06) : v);
+    if ((v = hit(r.clap, inBar))) this._clap(t(), v);
 
     // Bass: root on the downbeat, fifth on the second beat.
     if (this.drumsOnly) return;
     // Bass guitar only in rhythms that use it (modern); traditional ጓይላ has none.
     if (r.bass !== false && inBar === 0) this._bass(this.root - 24, time, this.stepDur * r.stepsPerBeat * 0.9);
     if (r.bass !== false && inBar === r.stepsPerBar / 2) this._bass(this.root - 17, time, this.stepDur * r.stepsPerBeat * 0.8);
+
+    // ኽራር picking: a quick, lighter repeat right after the beat ("ta-ka"),
+    // the 1/6-beat position measured on the krar recording.
+    if (this.instrument === "krar" && r.stepsPerBeat === 6 && loopStep % 2 === 1 && inBar % r.stepsPerBeat === 1) {
+      const prev = (loopStep - 1) / 2;
+      for (const key of this.notes) {
+        const [row, c] = key.split(":").map(Number);
+        if (c === prev) this._melody(rowToMidi(this.scale, row, this.root), time + human(0.005), this.stepDur * 1.5, 0.55);
+      }
+    }
 
     if (loopStep % 2 === 0) {
       const col = loopStep / 2;
@@ -289,7 +329,8 @@ export class MusicEngine {
         // Hold until the next column that has a note (max 3 columns).
         let len = 1;
         while (len < 3 && ![...Array(ROWS).keys()].some((rr) => this.notes.has(`${rr}:${(col + len) % cols}`))) len++;
-        this._melody(rowToMidi(this.scale, row, this.root), time, len * 2 * this.stepDur);
+        this._melody(rowToMidi(this.scale, row, this.root), Math.max(this.ctx.currentTime, time + human(0.006)),
+          len * 2 * this.stepDur, 0.9 + Math.random() * 0.2);
       }
       if (this.onStep) {
         const delay = Math.max(0, (time - this.ctx.currentTime) * 1000);
@@ -365,10 +406,11 @@ export class MusicEngine {
     lfo.stop(stopAt);
   }
 
-  _melody(midi, time, dur) {
+  _melody(midi, time, dur, vel = 1) {
     const f = this.hz(midi + OCTAVE[this.instrument]);
     const ctx = this.ctx;
     const out = ctx.createGain();
+    out.gain.value = vel;
     out.connect(this.master);
     const send = ctx.createGain();
     send.gain.value = 0.25;

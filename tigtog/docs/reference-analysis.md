@@ -137,6 +137,21 @@ landing up to ~15 ms apart. Remaining measured gaps: 130–180 Hz ~7 dB weak,
 Listen: [round 2 drums](listening/tigtog_guayla_bahlawi_v2_drums.mp3) ·
 [round 2 with krar](listening/tigtog_guayla_bahlawi_v2_full.mp3)
 
+### Third round (listener: "it does not sound Tigray")
+
+The melody generator walked randomly through the scale. Measured on a krar
+recording (statistics only, no melody copied), a ኽራር line is dense and
+repetitive: ~3 notes per beat, ~60% repeated notes, ~24% neighbour steps,
+~11% octave/string jumps, a narrow range, notes at 0, ⅙, ⅓ and ⅔ of the
+beat. The generator now builds a one-bar riff with those statistics and
+repeats it, the ኽራር adds a light "ta-ka" repeat on the ⅙ position, and
+every drum stroke and note gets small human timing/loudness variations.
+Rendered clip measured like the real krar: positions 0/⅙/⅓/⅔ (none on ½,
+⅚), 54% repeats, 2.4 notes per beat.
+
+Listen: [riff 1](listening/tigtog_guayla_bahlawi_v4_riff1.mp3) ·
+[riff 2](listening/tigtog_guayla_bahlawi_v4b_riff2.mp3)
+
 Measurements can rule out wrong sounds but cannot confirm that something
 sounds Tigrinya; that needs native listeners. Real ከበሮ and krar recordings
 from Tigrinya musicians would be better than any synthesis.
